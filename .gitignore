@@ -34,3 +34,4 @@ appsettings.*.local.json
 # OS / IDE
 .DS_Store
 .idea/
+!data/raw/labels_*.csv
