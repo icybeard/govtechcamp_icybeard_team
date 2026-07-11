@@ -1,0 +1,36 @@
+# Datasets — describe sources in docs/data/, don't commit binaries
+data/raw/
+data/processed/
+*.tif
+*.tiff
+*.nc
+*.parquet
+
+# Node / Vue
+node_modules/
+dist/
+.vite/
+*.local
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Python / ML
+__pycache__/
+.venv/
+venv/
+.ipynb_checkpoints/
+*.egg-info/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+
+# OS / IDE
+.DS_Store
+.idea/

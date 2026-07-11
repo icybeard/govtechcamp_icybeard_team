@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: govtech-db
+    environment:
+      POSTGRES_USER: govtech
+      POSTGRES_PASSWORD: govtech
+      POSTGRES_DB: govtech
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/seed:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  pgdata:
