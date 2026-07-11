@@ -1,6 +1,8 @@
 services:
   db:
-    image: postgis/postgis:16-3.4
+    # imresamu/postgis — multi-arch (arm64+amd64); официальный postgis/postgis только amd64
+    # и на Apple Silicon работает через эмуляцию.
+    image: imresamu/postgis:16-3.4
     container_name: govtech-db
     environment:
       POSTGRES_USER: govtech
@@ -11,6 +13,36 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./database/seed:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U govtech"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: ./backend
+    container_name: govtech-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=db;Port=5432;Database=govtech;Username=govtech;Password=govtech
+      # Значения берутся из .env в корне (cp .env.example .env); дефолты — для запуска без .env
+      Jwt__Key: ${JWT_KEY:-dev-only-signing-key-change-in-production-0123456789abcdef}
+      Seed__AdminEmail: ${SEED_ADMIN_EMAIL:-admin@icybeard.local}
+      Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:-ChangeMe123!}
+      Cors__Origins: http://localhost:5173
+    ports:
+      - "5080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    container_name: govtech-web
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
 
 volumes:
   pgdata:
