@@ -20,12 +20,19 @@ import shap
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
-FEATURES = ["elevation_m", "dist_to_river_km", "elev_above_river_m", "population"]
+FEATURES = [
+    "elevation_m", "dist_to_river_km", "elev_above_river_m", "population",
+    "swe_mar2024_mm", "swe_mar_pct_norm", "precip_novmar_mm", "precip_novmar_pct_norm",
+]
 FACTOR_LABELS = {
     "elevation_m": "Высота {v:.0f} м",
     "dist_to_river_km": "Река в {v:.1f} км",
     "elev_above_river_m": "Превышение над рекой {v:.0f} м",
     "population": "Население {v:.0f}",
+    "swe_mar2024_mm": "Снегозапас {v:.0f} мм",
+    "swe_mar_pct_norm": "Снегозапас {v:.0f}% нормы",
+    "precip_novmar_mm": "Осадки Nov–Mar {v:.0f} мм",
+    "precip_novmar_pct_norm": "Осадки {v:.0f}% нормы",
 }
 
 

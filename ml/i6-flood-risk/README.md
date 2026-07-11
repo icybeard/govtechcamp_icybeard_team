@@ -11,6 +11,14 @@ python3 scripts/load_settlements.py KZ-SEV data/raw/settlements_kz-sev.csv
 python3 scripts/compute_terrain_features.py KZ-SEV \
     data/raw/settlements_kz-sev.csv data/processed/features_kz-sev.csv
 
+# 2b. Погодные признаки ERA5-Land: снегозапас и осадки в % от нормы
+#     (нужен ключ CDS в ~/.cdsapirc и .venv: python3 -m venv .venv && .venv/bin/pip install cdsapi netCDF4)
+.venv/bin/python scripts/download_era5.py data/raw/era5_land_monthly_kz-sev.nc
+# CDS отдаёт zip: unzip в data/raw/era5_kz-sev/
+.venv/bin/python scripts/compute_era5_features.py \
+    data/raw/era5_kz-sev/data_stream-moda.nc \
+    data/processed/features_kz-sev.csv data/processed/features_kz-sev.csv
+
 # 3a. Пока нет разметки: прозрачный baseline-скоринг (stdlib, без ML)
 python3 ml/i6-flood-risk/baseline_scores.py \
     data/processed/features_kz-sev.csv data/processed/scores_kz-sev.csv
