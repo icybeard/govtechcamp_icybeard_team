@@ -9,6 +9,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RegionMetric> RegionMetrics => Set<RegionMetric>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
     public DbSet<SettlementMetric> SettlementMetrics => Set<SettlementMetric>();
+    public DbSet<PreventiveMeasure> PreventiveMeasures => Set<PreventiveMeasure>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -52,6 +53,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(m => m.MetricKey).HasMaxLength(100);
             e.Property(m => m.Period).HasMaxLength(20);
             e.HasOne(m => m.Settlement).WithMany(s => s.Metrics).HasForeignKey(m => m.SettlementId);
+        });
+
+        modelBuilder.Entity<PreventiveMeasure>(e =>
+        {
+            e.HasIndex(m => new { m.Module, m.Status });
+            e.HasIndex(m => m.SettlementId);
+            e.Property(m => m.Module).HasMaxLength(50);
+            e.Property(m => m.Title).HasMaxLength(300);
+            e.Property(m => m.Status).HasMaxLength(20);
+            e.Property(m => m.DecidedByName).HasMaxLength(200);
+            e.HasOne(m => m.Settlement).WithMany().HasForeignKey(m => m.SettlementId);
         });
     }
 }

@@ -89,5 +89,6 @@ app.MapAuthEndpoints();
 app.MapAccountEndpoints();
 app.MapRegionEndpoints();
 app.MapSettlementEndpoints();
+app.MapMeasureEndpoints();
 
 app.Run();

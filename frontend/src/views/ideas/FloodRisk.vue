@@ -1,53 +1,94 @@
 <script setup>
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
 import { api } from '@/service/api';
-import { onMounted, ref } from 'vue';
+import { isAdmin } from '@/service/auth';
+import { useToast } from 'primevue/usetoast';
+import { computed, onMounted, ref } from 'vue';
 
 const REGION = 'KZ-SEV'; // СКО — пилотный регион И-6 (см. docs/ideas/i6-flood-risk/plan.md)
 const MODULE = 'flood-risk';
+
+const toast = useToast();
 
 const loading = ref(true);
 const error = ref(null);
 const points = ref([]);
 const regionValues = ref({});
 const selected = ref(null);
+const measures = ref([]);
+const generating = ref(false);
+
+const selectedMeasures = computed(() => (selected.value ? measures.value.filter((m) => m.settlementId === selected.value.id) : []));
+
+const statusSeverity = { Proposed: 'warn', Approved: 'success', Rejected: 'danger', Done: 'info' };
+const statusLabel = { Proposed: 'Предложено', Approved: 'Утверждено', Rejected: 'Отклонено', Done: 'Выполнено' };
+
+async function loadAll() {
+    const [settlementScores, regionScores, measureList] = await Promise.all([
+        api.get(`/settlements/metrics/${MODULE}?metricKey=risk_score`),
+        api.get(`/regions/metrics/${MODULE}?metricKey=risk_score`),
+        api.get(`/measures/?module=${MODULE}`)
+    ]);
+    points.value = settlementScores.map((s) => ({
+        id: s.settlementId,
+        name: s.name,
+        lat: s.lat,
+        lon: s.lon,
+        value: Math.round(s.value),
+        population: s.population,
+        factors: s.factors
+    }));
+    regionValues.value = regionScores;
+    measures.value = measureList;
+}
 
 onMounted(async () => {
     try {
-        // Скоры НП (точки на карте) и областной хороплет — из БД, куда пишет ML-пайплайн
-        const [settlementScores, regionScores] = await Promise.all([
-            api.get(`/settlements/metrics/${MODULE}?metricKey=risk_score`),
-            api.get(`/regions/metrics/${MODULE}?metricKey=risk_score`)
-        ]);
-        points.value = settlementScores.map((s) => ({
-            id: s.settlementId,
-            name: s.name,
-            lat: s.lat,
-            lon: s.lon,
-            value: Math.round(s.value),
-            population: s.population,
-            factors: s.factors
-        }));
-        regionValues.value = regionScores;
+        await loadAll();
     } catch (e) {
         error.value = e.message;
     } finally {
         loading.value = false;
     }
 });
+
+async function generateMeasures() {
+    generating.value = true;
+    try {
+        const result = await api.post('/measures/generate', { module: MODULE, metricKey: 'risk_score', period: null });
+        toast.add({ severity: 'success', summary: `Создано черновиков: ${result.created}`, life: 4000 });
+        measures.value = await api.get(`/measures/?module=${MODULE}`);
+    } catch (e) {
+        toast.add({ severity: 'error', summary: 'Ошибка генерации', detail: e.message, life: 5000 });
+    } finally {
+        generating.value = false;
+    }
+}
+
+async function setStatus(measure, status) {
+    try {
+        const updated = await api.put(`/measures/${measure.id}/status`, { status, note: null });
+        measures.value = measures.value.map((m) => (m.id === updated.id ? updated : m));
+    } catch (e) {
+        toast.add({ severity: 'error', summary: 'Не удалось изменить статус', detail: e.message, life: 5000 });
+    }
+}
 </script>
 
 <template>
     <div class="grid grid-cols-12 gap-6">
         <div class="col-span-12">
             <div class="card mb-0">
-                <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
                     <div>
                         <h4 class="m-0">И-6. Паводковый риск-скоринг</h4>
                         <span class="text-muted-color">Риск весеннего затопления населённых пунктов. Пилот: Северо-Казахстанская область.</span>
                     </div>
-                    <Tag v-if="points.length" :value="`НП со скорами: ${points.length}`" severity="success" />
-                    <Tag v-else value="данные не загружены" severity="warn" />
+                    <div class="flex items-center gap-3">
+                        <Tag v-if="points.length" :value="`НП со скорами: ${points.length}`" severity="success" />
+                        <Tag v-else value="данные не загружены" severity="warn" />
+                        <Button v-if="isAdmin && points.length" label="Сгенерировать черновики мер" icon="pi pi-bolt" size="small" :loading="generating" @click="generateMeasures" />
+                    </div>
                 </div>
                 <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
                 <Message v-else-if="!loading && points.length === 0" severity="info" :closable="false">
@@ -74,15 +115,59 @@ onMounted(async () => {
                     </div>
 
                     <h6>Почему такой скор</h6>
-                    <ul v-if="selected.factors?.length" class="list-none p-0 m-0 flex flex-col gap-2">
+                    <ul v-if="selected.factors?.length" class="list-none p-0 m-0 flex flex-col gap-2 mb-4">
                         <li v-for="f in selected.factors" :key="f.name" class="flex items-center justify-between gap-3">
                             <span>{{ f.name }}</span>
                             <Tag :value="(f.impact > 0 ? '+' : '') + f.impact.toFixed(2)" :severity="f.impact > 0 ? 'danger' : 'success'" />
                         </li>
                     </ul>
-                    <p v-else class="text-muted-color">Факторы появятся после загрузки SHAP-объяснений из ML-пайплайна.</p>
+                    <p v-else class="text-muted-color mb-4">Факторы появятся после загрузки SHAP-объяснений из ML-пайплайна.</p>
+
+                    <h6>Меры по этому НП</h6>
+                    <ul v-if="selectedMeasures.length" class="list-none p-0 m-0 flex flex-col gap-2">
+                        <li v-for="m in selectedMeasures" :key="m.id" class="flex items-center justify-between gap-2">
+                            <span>{{ m.title }}</span>
+                            <Tag :value="statusLabel[m.status]" :severity="statusSeverity[m.status]" />
+                        </li>
+                    </ul>
+                    <p v-else class="text-muted-color">Мер пока нет.</p>
                 </template>
-                <p v-else class="text-muted-color">Кликните населённый пункт на карте — здесь появятся скор, объяснение факторов и очередь превентивных мер.</p>
+                <p v-else class="text-muted-color">Кликните населённый пункт на карте — здесь появятся скор, объяснение факторов и меры.</p>
+            </div>
+        </div>
+
+        <div class="col-span-12">
+            <div class="card mb-0">
+                <div class="flex items-center justify-between mb-3">
+                    <h5 class="m-0">Очередь превентивных мер</h5>
+                    <span class="text-muted-color">Черновики предлагает система, решение принимает комиссия</span>
+                </div>
+                <DataTable :value="measures" paginator :rows="10" size="small" sortField="priority" :sortOrder="-1" :loading="loading">
+                    <Column field="settlementName" header="НП" sortable />
+                    <Column field="title" header="Мера" />
+                    <Column field="priority" header="Приоритет" sortable style="width: 8rem" />
+                    <Column field="status" header="Статус" sortable style="width: 10rem">
+                        <template #body="{ data }">
+                            <Tag :value="statusLabel[data.status]" :severity="statusSeverity[data.status]" />
+                        </template>
+                    </Column>
+                    <Column field="decidedByName" header="Решение принял" style="width: 12rem">
+                        <template #body="{ data }">
+                            <span v-if="data.decidedByName">{{ data.decidedByName }}</span>
+                            <span v-else class="text-muted-color">—</span>
+                        </template>
+                    </Column>
+                    <Column header="Действия" style="width: 12rem">
+                        <template #body="{ data }">
+                            <div v-if="data.status === 'Proposed'" class="flex gap-2">
+                                <Button label="Утвердить" size="small" severity="success" outlined @click="setStatus(data, 'Approved')" />
+                                <Button icon="pi pi-times" size="small" severity="danger" outlined @click="setStatus(data, 'Rejected')" />
+                            </div>
+                            <Button v-else-if="data.status === 'Approved'" label="Выполнено" size="small" severity="info" outlined @click="setStatus(data, 'Done')" />
+                        </template>
+                    </Column>
+                    <template #empty>Очередь пуста — загрузите скоры и сгенерируйте черновики мер.</template>
+                </DataTable>
             </div>
         </div>
     </div>
