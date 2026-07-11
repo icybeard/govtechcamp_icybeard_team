@@ -7,6 +7,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<User> Users => Set<User>();
     public DbSet<Region> Regions => Set<Region>();
     public DbSet<RegionMetric> RegionMetrics => Set<RegionMetric>();
+    public DbSet<Settlement> Settlements => Set<Settlement>();
+    public DbSet<SettlementMetric> SettlementMetrics => Set<SettlementMetric>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +35,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(m => m.MetricKey).HasMaxLength(100);
             e.Property(m => m.Period).HasMaxLength(20);
             e.HasOne(m => m.Region).WithMany(r => r.Metrics).HasForeignKey(m => m.RegionId);
+        });
+
+        modelBuilder.Entity<Settlement>(e =>
+        {
+            e.HasIndex(s => new { s.RegionId, s.Name });
+            e.Property(s => s.Name).HasMaxLength(300);
+            e.Property(s => s.KatoCode).HasMaxLength(20);
+            e.HasOne(s => s.Region).WithMany().HasForeignKey(s => s.RegionId);
+        });
+
+        modelBuilder.Entity<SettlementMetric>(e =>
+        {
+            e.HasIndex(m => new { m.SettlementId, m.Module, m.MetricKey, m.Period }).IsUnique();
+            e.Property(m => m.Module).HasMaxLength(50);
+            e.Property(m => m.MetricKey).HasMaxLength(100);
+            e.Property(m => m.Period).HasMaxLength(20);
+            e.HasOne(m => m.Settlement).WithMany(s => s.Metrics).HasForeignKey(m => m.SettlementId);
         });
     }
 }
