@@ -21,6 +21,7 @@ make up
 - **Веб-клиент:** http://localhost:5173 — вход суперпользователем из `.env` (по умолчанию `admin@icybeard.local` / `ChangeMe123!`)
 - **API:** http://localhost:5080 (`/api/health`); из веб-клиента `/api` проксирует nginx
 - `Ctrl+C` — остановить; `make upd` — в фоне; `make down` — погасить; `make clean` — сброс БД; `make logs` — логи
+- Первый запуск: **`make demo-data`** (после старта стека) — загружает 606 НП СКО и ML-скоры риска, карта оживает
 
 Для запуска нужен только Docker. Для локальной разработки с hot-reload (нужны .NET SDK 10 и Node.js 20+): `make db` + `make backend` + `make frontend` — vite и `dotnet watch` быстрее пересборки контейнеров. Детали — в [backend/README.md](backend/README.md) и [frontend/README.md](frontend/README.md).
 

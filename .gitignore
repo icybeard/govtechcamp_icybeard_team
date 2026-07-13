@@ -35,3 +35,8 @@ appsettings.*.local.json
 .DS_Store
 .idea/
 !data/raw/labels_*.csv
+# Малые производные CSV пилота — коммитим для воспроизводимости демо (make demo-data)
+!data/raw/settlements_*.csv
+!data/processed/
+!data/processed/features_*.csv
+!data/processed/scores_*.csv
