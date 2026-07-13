@@ -11,7 +11,7 @@ export default defineConfig({
     optimizeDeps: {
         noDiscovery: true,
         // CJS-зависимости нужно пре-бандлить явно, иначе dev-сервер падает на import default
-        include: ['leaflet', 'chart.js']
+        include: ['leaflet', 'chart.js', 'leaflet-velocity']
     },
     plugins: [
         vue(),

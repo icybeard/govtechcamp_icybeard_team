@@ -2,7 +2,7 @@
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
 import { api } from '@/service/api';
 import { gibsOverlays } from '@/service/gibs';
-import { degToCompass, fetchRegionWeather, windMarkers } from '@/service/weather';
+import { degToCompass, fetchRegionWeather, fetchWindGrid, windMarkers } from '@/service/weather';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 /**
@@ -20,6 +20,7 @@ const hotspots = ref([]);
 const hotspotsError = ref(null);
 const selected = ref(null);
 const updatedAt = ref(null);
+const windGrid = ref(null);
 
 const tileOverlays = gibsOverlays();
 
@@ -67,6 +68,11 @@ async function refresh() {
     } finally {
         loading.value = false;
     }
+    try {
+        windGrid.value = await fetchWindGrid(); // анимация частиц ветра
+    } catch {
+        windGrid.value = null;
+    }
 }
 
 let timer = null;
@@ -104,7 +110,7 @@ function onRegionClick(region) {
         <div class="col-span-12">
             <div class="card mb-0">
                 <div class="relative">
-                    <KazakhstanMap height="72vh" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" legend-title="Метео-индекс" @region-click="onRegionClick" />
+                    <KazakhstanMap height="72vh" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="windGrid" legend-title="Метео-индекс" @region-click="onRegionClick" />
 
                     <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
                         <Tag value="Кликните область — разбор метео-индекса" severity="secondary" />

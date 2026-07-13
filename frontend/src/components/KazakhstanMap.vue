@@ -1,6 +1,7 @@
 <script setup>
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet-velocity';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 /**
@@ -18,6 +19,8 @@ const props = defineProps({
     markers: { type: Array, default: () => [] },
     // Спутниковые слои-подложки: [{ name, url, opacity, maxNativeZoom, attribution }] — переключатель Leaflet
     tileOverlays: { type: Array, default: () => [] },
+    // Сетка ветра [uRecord, vRecord] (формат leaflet-velocity) — анимированные частицы
+    windGrid: { type: Array, default: null },
     legendTitle: { type: String, default: 'Значение' },
     height: { type: String, default: '520px' }
 });
@@ -29,6 +32,7 @@ let map = null;
 let geoLayer = null;
 let pointsLayer = null;
 let markersLayer = null;
+let velocityLayer = null;
 let legend = null;
 
 const PALETTE = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15'];
@@ -66,6 +70,26 @@ function renderPoints() {
     ).addTo(map);
     const bounds = L.latLngBounds(props.points.map((p) => [p.lat, p.lon]));
     map.fitBounds(bounds, { padding: [30, 30] });
+}
+
+function renderWind() {
+    if (velocityLayer) {
+        velocityLayer.remove();
+        velocityLayer = null;
+    }
+    if (!props.windGrid) return;
+    velocityLayer = L.velocityLayer({
+        data: props.windGrid,
+        maxVelocity: 15,
+        velocityScale: 0.01,
+        lineWidth: 2.5,
+        particleMultiplier: 1 / 180,
+        particleAge: 90,
+        opacity: 0.97,
+        // тёмно-синяя шкала — читается и на светлой подложке, и на красном хороплете
+        colorScale: ['#1e3a8a', '#1d4ed8', '#2563eb', '#3b82f6'],
+        displayValues: false
+    }).addTo(map);
 }
 
 function renderMarkers() {
@@ -162,6 +186,7 @@ async function initMap() {
     map.fitBounds(geoLayer.getBounds(), { padding: [10, 10] });
     renderPoints();
     renderMarkers();
+    renderWind();
     renderLegend();
 }
 
@@ -193,6 +218,13 @@ watch(
         if (map) renderMarkers();
     },
     { deep: true }
+);
+
+watch(
+    () => props.windGrid,
+    () => {
+        if (map) renderWind();
+    }
 );
 
 onMounted(initMap);

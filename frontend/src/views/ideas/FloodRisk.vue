@@ -3,7 +3,7 @@ import KazakhstanMap from '@/components/KazakhstanMap.vue';
 import { api } from '@/service/api';
 import { isAdmin } from '@/service/auth';
 import { gibsOverlays } from '@/service/gibs';
-import { degToCompass, fetchRegionWeather, windMarkers } from '@/service/weather';
+import { degToCompass, fetchRegionWeather, fetchWindGrid, windMarkers } from '@/service/weather';
 import { useToast } from 'primevue/usetoast';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
@@ -35,6 +35,7 @@ const generating = ref(false);
 const liveWeather = ref(true);
 const regionWeather = ref({});
 const weatherUpdatedAt = ref(null);
+const windGrid = ref(null);
 const tileOverlays = gibsOverlays();
 
 const weatherMarkers = computed(() =>
@@ -51,6 +52,7 @@ async function refreshWeather() {
         const { updatedAt, regions } = await fetchRegionWeather();
         regionWeather.value = regions;
         weatherUpdatedAt.value = updatedAt;
+        windGrid.value = await fetchWindGrid(); // анимация частиц ветра
     } catch {
         weatherUpdatedAt.value = null; // live-слой опционален — страница работает и без него
     }
@@ -190,7 +192,7 @@ async function setStatus(measure, status) {
         <div class="col-span-12">
             <div class="card mb-0">
                 <div class="relative">
-                    <KazakhstanMap height="72vh" :values="regionValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" legend-title="Риск паводка" @point-click="selected = $event" @region-click="selected = null" />
+                    <KazakhstanMap height="72vh" :values="regionValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" legend-title="Риск паводка" @point-click="selected = $event" @region-click="selected = null" />
 
                     <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
                         <Tag value="Кликните НП — скор, факторы «почему» и меры" severity="secondary" />
