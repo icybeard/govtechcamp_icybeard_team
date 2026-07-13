@@ -16,6 +16,8 @@ const props = defineProps({
     points: { type: Array, default: () => [] },
     // Произвольные маркеры: [{ lat, lon, html, tooltip }] — div-иконки (стрелки ветра, очаги)
     markers: { type: Array, default: () => [] },
+    // Спутниковые слои-подложки: [{ name, url, opacity, maxNativeZoom, attribution }] — переключатель Leaflet
+    tileOverlays: { type: Array, default: () => [] },
     legendTitle: { type: String, default: 'Значение' },
     height: { type: String, default: '520px' }
 });
@@ -143,6 +145,16 @@ async function initMap() {
         opacity: 0.6
     }).addTo(map);
     L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap, geoBoundaries').addTo(map);
+
+    if (props.tileOverlays.length) {
+        const overlays = Object.fromEntries(
+            props.tileOverlays.map((t) => [
+                t.name,
+                L.tileLayer(t.url, { opacity: t.opacity ?? 1, maxNativeZoom: t.maxNativeZoom, maxZoom: 12, attribution: t.attribution })
+            ])
+        );
+        L.control.layers(null, overlays, { position: 'topleft', collapsed: true }).addTo(map);
+    }
 
     const response = await fetch('/geo/kz-regions.geojson');
     const geojson = await response.json();

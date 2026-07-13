@@ -2,8 +2,10 @@
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
 import { api } from '@/service/api';
 import { isAdmin } from '@/service/auth';
+import { gibsOverlays } from '@/service/gibs';
+import { degToCompass, fetchRegionWeather, windMarkers } from '@/service/weather';
 import { useToast } from 'primevue/usetoast';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const REGION = 'KZ-SEV'; // СКО — пилотный регион И-6 (см. docs/ideas/i6-flood-risk/plan.md)
 const MODULE = 'flood-risk';
@@ -17,6 +19,32 @@ const regionValues = ref({});
 const selected = ref(null);
 const measures = ref([]);
 const generating = ref(false);
+
+// Live-погода поверх карты (Open-Meteo): скор — сезонный (снеготаяние),
+// live-слой показывает текущую обстановку. Автообновление раз в 15 минут.
+const liveWeather = ref(true);
+const regionWeather = ref({});
+const weatherUpdatedAt = ref(null);
+const tileOverlays = gibsOverlays();
+
+const weatherMarkers = computed(() =>
+    liveWeather.value
+        ? windMarkers(
+              regionWeather.value,
+              (w) => `${w.name}: ветер ${w.windSpeed} км/ч ${degToCompass(w.windDir)} · осадки 24ч ${w.precip24h} мм · прогноз ${w.forecast24h} мм · ${w.temp} °C`
+          )
+        : []
+);
+
+async function refreshWeather() {
+    try {
+        const { updatedAt, regions } = await fetchRegionWeather();
+        regionWeather.value = regions;
+        weatherUpdatedAt.value = updatedAt;
+    } catch {
+        weatherUpdatedAt.value = null; // live-слой опционален — страница работает и без него
+    }
+}
 
 const selectedMeasures = computed(() => (selected.value ? measures.value.filter((m) => m.settlementId === selected.value.id) : []));
 
@@ -46,7 +74,10 @@ async function loadAll() {
     measures.value = measureList;
 }
 
+let weatherTimer = null;
 onMounted(async () => {
+    refreshWeather();
+    weatherTimer = setInterval(refreshWeather, 15 * 60 * 1000);
     try {
         await loadAll();
     } catch (e) {
@@ -55,6 +86,7 @@ onMounted(async () => {
         loading.value = false;
     }
 });
+onBeforeUnmount(() => clearInterval(weatherTimer));
 
 async function generateMeasures() {
     generating.value = true;
@@ -88,7 +120,12 @@ async function setStatus(measure, status) {
                         <h4 class="m-0">И-6. Паводковый риск-скоринг</h4>
                         <span class="text-muted-color">Риск весеннего затопления населённых пунктов. Пилот: Северо-Казахстанская область.</span>
                     </div>
-                    <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <div class="flex items-center gap-2">
+                            <ToggleSwitch v-model="liveWeather" inputId="liveWeather" />
+                            <label for="liveWeather" class="text-muted-color">Live-погода</label>
+                            <Tag v-if="liveWeather && weatherUpdatedAt" :value="`обновлено ${weatherUpdatedAt}`" severity="success" />
+                        </div>
                         <Tag v-if="points.length" :value="`НП со скорами: ${points.length}`" severity="success" />
                         <Tag v-else value="данные не загружены" severity="warn" />
                         <Button v-if="isAdmin && points.length" label="Сгенерировать черновики мер" icon="pi pi-bolt" size="small" :loading="generating" @click="generateMeasures" />
@@ -103,7 +140,7 @@ async function setStatus(measure, status) {
 
         <div class="col-span-12 lg:col-span-8">
             <div class="card mb-0">
-                <KazakhstanMap :values="regionValues" :points="points" legend-title="Риск паводка" @point-click="selected = $event" @region-click="selected = null" />
+                <KazakhstanMap :values="regionValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" legend-title="Риск паводка" @point-click="selected = $event" @region-click="selected = null" />
             </div>
         </div>
 

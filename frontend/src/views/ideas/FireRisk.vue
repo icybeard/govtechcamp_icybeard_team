@@ -1,34 +1,32 @@
 <script setup>
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
 import { api } from '@/service/api';
-import { computed, onMounted, ref } from 'vue';
+import { gibsOverlays } from '@/service/gibs';
+import { degToCompass, fetchRegionWeather, windMarkers } from '@/service/weather';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 /**
- * Лайв-карта пожарной обстановки:
- *  - метео-индекс опасности по областям — Open-Meteo (без ключа), обновляется на «сейчас»;
- *  - активные очаги за 24 ч — NASA FIRMS через наш прокси (нужен FIRMS_MAP_KEY в .env);
- *  - стрелки — направление и скорость ветра в центре области.
+ * Ситуационная live-карта пожаров: метео-индекс по областям (Open-Meteo, сейчас),
+ * очаги NASA FIRMS за 24 ч, стрелки ветра, спутниковые слои GIBS.
+ * Автообновление каждые 15 минут (совпадает с кэшем FIRMS-прокси).
  * Индекс — прозрачная формула (не ML): temp/35·25 + (100−RH)/100·35 + wind/40·20 + dryDays/7·20.
  */
+const REFRESH_MS = 15 * 60 * 1000;
+
 const loading = ref(true);
 const error = ref(null);
-const regionWeather = ref({}); // iso -> { temp, humidity, windSpeed, windDir, precip7d, dryDays, index, parts }
+const regionWeather = ref({});
 const hotspots = ref([]);
 const hotspotsError = ref(null);
 const selected = ref(null);
 const updatedAt = ref(null);
 
+const tileOverlays = gibsOverlays();
+
 const indexValues = computed(() => Object.fromEntries(Object.entries(regionWeather.value).map(([iso, w]) => [iso, w.index])));
 
 const markers = computed(() => [
-    // Стрелки ветра в центрах областей (поворот CSS по направлению «куда дует»)
-    ...Object.values(regionWeather.value).map((w) => ({
-        lat: w.lat,
-        lon: w.lon,
-        html: `<span style="display:inline-block;transform:rotate(${w.windDir + 180}deg);font-size:18px;color:#1e293b;text-shadow:0 0 3px #fff">↑</span>`,
-        tooltip: `${w.name}: ветер ${w.windSpeed} км/ч, ${degToCompass(w.windDir)}`
-    })),
-    // Очаги FIRMS
+    ...windMarkers(regionWeather.value, (w) => `${w.name}: ветер ${w.windSpeed} км/ч, ${degToCompass(w.windDir)}; осадки 24ч ${w.precip24h} мм`),
     ...hotspots.value.map((h) => ({
         lat: h.lat,
         lon: h.lon,
@@ -37,87 +35,46 @@ const markers = computed(() => [
     }))
 ]);
 
-function degToCompass(deg) {
-    const dirs = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'];
-    return dirs[Math.round(deg / 45) % 8];
-}
-
-function centroid(feature) {
-    // центр bbox внешнего кольца — достаточно для стрелки ветра
-    let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
-    const rings = feature.geometry.type === 'MultiPolygon' ? feature.geometry.coordinates.flat(1) : feature.geometry.coordinates;
-    for (const ring of rings) {
-        for (const [lon, lat] of ring) {
-            minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
-            minLon = Math.min(minLon, lon); maxLon = Math.max(maxLon, lon);
-        }
-    }
-    return { lat: (minLat + maxLat) / 2, lon: (minLon + maxLon) / 2 };
-}
-
 function clamp01(x) {
     return Math.max(0, Math.min(1, x));
 }
 
-function computeIndex(current, dryDays) {
+function computeIndex(w) {
     const parts = [
-        { name: `Температура ${current.temperature_2m} °C`, value: Math.round(25 * clamp01(current.temperature_2m / 35)) },
-        { name: `Сухость воздуха (влажность ${current.relative_humidity_2m} %)`, value: Math.round(35 * clamp01((100 - current.relative_humidity_2m) / 100)) },
-        { name: `Ветер ${current.wind_speed_10m} км/ч`, value: Math.round(20 * clamp01(current.wind_speed_10m / 40)) },
-        { name: `Дней без осадков: ${dryDays} из 7`, value: Math.round(20 * clamp01(dryDays / 7)) }
+        { name: `Температура ${w.temp} °C`, value: Math.round(25 * clamp01(w.temp / 35)) },
+        { name: `Сухость воздуха (влажность ${w.humidity} %)`, value: Math.round(35 * clamp01((100 - w.humidity) / 100)) },
+        { name: `Ветер ${w.windSpeed} км/ч`, value: Math.round(20 * clamp01(w.windSpeed / 40)) },
+        { name: `Дней без осадков: ${w.dryDays} из 7`, value: Math.round(20 * clamp01(w.dryDays / 7)) }
     ];
     return { index: parts.reduce((s, p) => s + p.value, 0), parts };
 }
 
-onMounted(async () => {
+async function refresh() {
     try {
-        const geo = await (await fetch('/geo/kz-regions.geojson')).json();
-        const regions = geo.features.map((f) => ({ iso: f.properties.shapeISO, name: f.properties.shapeName, ...centroid(f) }));
-
-        const params = new URLSearchParams({
-            latitude: regions.map((r) => r.lat.toFixed(3)).join(','),
-            longitude: regions.map((r) => r.lon.toFixed(3)).join(','),
-            current: 'temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m',
-            daily: 'precipitation_sum',
-            past_days: '7',
-            forecast_days: '1',
-            timezone: 'UTC'
-        });
-        const weather = await (await fetch(`https://api.open-meteo.com/v1/forecast?${params}`)).json();
-
-        const result = {};
-        weather.forEach((w, i) => {
-            const precipDays = w.daily.precipitation_sum.slice(0, 7);
-            const precip7d = precipDays.reduce((s, v) => s + (v ?? 0), 0);
-            let dryDays = 0;
-            for (let d = precipDays.length - 1; d >= 0 && (precipDays[d] ?? 0) < 1; d--) dryDays++;
-            const { index, parts } = computeIndex(w.current, dryDays);
-            result[regions[i].iso] = {
-                ...regions[i],
-                temp: w.current.temperature_2m,
-                humidity: w.current.relative_humidity_2m,
-                windSpeed: w.current.wind_speed_10m,
-                windDir: w.current.wind_direction_10m,
-                precip7d: Math.round(precip7d * 10) / 10,
-                dryDays,
-                index,
-                parts
-            };
-        });
-        regionWeather.value = result;
-        updatedAt.value = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const { updatedAt: at, regions } = await fetchRegionWeather();
+        for (const w of Object.values(regions)) Object.assign(w, computeIndex(w));
+        regionWeather.value = regions;
+        updatedAt.value = at;
+        error.value = null;
     } catch (e) {
         error.value = `Open-Meteo недоступен: ${e.message}`;
     }
-
     try {
         hotspots.value = await api.get('/fire/hotspots');
+        hotspotsError.value = null;
     } catch (e) {
         hotspotsError.value = e.message;
     } finally {
         loading.value = false;
     }
+}
+
+let timer = null;
+onMounted(() => {
+    refresh();
+    timer = setInterval(refresh, REFRESH_MS);
 });
+onBeforeUnmount(() => clearInterval(timer));
 
 function onRegionClick(region) {
     selected.value = regionWeather.value[region.iso] ?? null;
@@ -131,10 +88,10 @@ function onRegionClick(region) {
                 <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
                     <div>
                         <h4 class="m-0">И-9. Пожарная обстановка — live</h4>
-                        <span class="text-muted-color">Метео-индекс опасности (Open-Meteo, сейчас) + активные очаги NASA FIRMS за 24 ч. Стрелки — куда дует ветер.</span>
+                        <span class="text-muted-color">Метео-индекс (Open-Meteo, сейчас) + очаги NASA FIRMS за 24 ч + слои GIBS. Обновление каждые 15 минут.</span>
                     </div>
                     <div class="flex items-center gap-3">
-                        <Tag v-if="updatedAt" :value="`погода на ${updatedAt}`" severity="success" />
+                        <Tag v-if="updatedAt" :value="`обновлено ${updatedAt}`" severity="success" />
                         <Tag v-if="hotspots.length" :value="`очагов за 24 ч: ${hotspots.length}`" severity="danger" />
                         <Tag v-else-if="!hotspotsError" value="очагов нет" severity="success" />
                     </div>
@@ -146,7 +103,7 @@ function onRegionClick(region) {
 
         <div class="col-span-12 lg:col-span-8">
             <div class="card mb-0">
-                <KazakhstanMap :values="indexValues" :markers="markers" legend-title="Метео-индекс" @region-click="onRegionClick" />
+                <KazakhstanMap :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" legend-title="Метео-индекс" @region-click="onRegionClick" />
             </div>
         </div>
 
@@ -170,7 +127,7 @@ function onRegionClick(region) {
 
                     <ul class="list-none p-0 m-0 flex flex-col gap-2 text-muted-color">
                         <li>Ветер: {{ selected.windSpeed }} км/ч, {{ degToCompass(selected.windDir) }}</li>
-                        <li>Осадки за 7 дней: {{ selected.precip7d }} мм</li>
+                        <li>Осадки: вчера {{ selected.precip24h }} мм, за 7 дней {{ selected.precip7d }} мм</li>
                     </ul>
                 </template>
                 <p v-else class="text-muted-color">Кликните область — здесь появится разбор метео-индекса: температура, сухость, ветер, дни без осадков.</p>
