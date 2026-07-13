@@ -20,6 +20,10 @@ const generating = ref(false);
 
 const selectedMeasures = computed(() => (selected.value ? measures.value.filter((m) => m.settlementId === selected.value.id) : []));
 
+// Клик по точке на карте фильтрует очередь мер по выбранному селу
+const visibleMeasures = computed(() => (selected.value ? selectedMeasures.value : measures.value));
+const scoreBySettlement = computed(() => Object.fromEntries(points.value.map((p) => [p.id, p.value])));
+
 const statusSeverity = { Proposed: 'warn', Approved: 'success', Rejected: 'danger', Done: 'info' };
 const statusLabel = { Proposed: 'Предложено', Approved: 'Утверждено', Rejected: 'Отклонено', Done: 'Выполнено' };
 
@@ -138,12 +142,28 @@ async function setStatus(measure, status) {
 
         <div class="col-span-12">
             <div class="card mb-0">
-                <div class="flex items-center justify-between mb-3">
-                    <h5 class="m-0">Очередь превентивных мер</h5>
-                    <span class="text-muted-color">Черновики предлагает система, решение принимает комиссия</span>
+                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <div class="flex items-center gap-3">
+                        <h5 class="m-0">Очередь превентивных мер</h5>
+                        <template v-if="selected">
+                            <Tag :value="`фильтр: ${selected.name}`" severity="info" />
+                            <Button label="Показать все" size="small" text @click="selected = null" />
+                        </template>
+                    </div>
+                    <span class="text-muted-color">Приоритет = скор риска × lg(население); решение принимает комиссия</span>
                 </div>
-                <DataTable :value="measures" paginator :rows="10" size="small" sortField="priority" :sortOrder="-1" :loading="loading">
+                <DataTable :value="visibleMeasures" paginator :rows="10" size="small" sortField="priority" :sortOrder="-1" :loading="loading">
                     <Column field="settlementName" header="НП" sortable />
+                    <Column header="Скор" style="width: 6rem">
+                        <template #body="{ data }">
+                            <Tag
+                                v-if="scoreBySettlement[data.settlementId] !== undefined"
+                                :value="scoreBySettlement[data.settlementId]"
+                                :severity="scoreBySettlement[data.settlementId] > 60 ? 'danger' : scoreBySettlement[data.settlementId] > 30 ? 'warn' : 'success'"
+                            />
+                            <span v-else class="text-muted-color">—</span>
+                        </template>
+                    </Column>
                     <Column field="title" header="Мера" />
                     <Column field="priority" header="Приоритет" sortable style="width: 8rem" />
                     <Column field="status" header="Статус" sortable style="width: 10rem">
@@ -166,7 +186,10 @@ async function setStatus(measure, status) {
                             <Button v-else-if="data.status === 'Approved'" label="Выполнено" size="small" severity="info" outlined @click="setStatus(data, 'Done')" />
                         </template>
                     </Column>
-                    <template #empty>Очередь пуста — загрузите скоры и сгенерируйте черновики мер.</template>
+                    <template #empty>
+                        <span v-if="selected">По «{{ selected.name }}» мер нет — скор {{ selected.value }} ниже порогов генерации или черновики ещё не создавались.</span>
+                        <span v-else>Очередь пуста — загрузите скоры и сгенерируйте черновики мер.</span>
+                    </template>
                 </DataTable>
             </div>
         </div>
