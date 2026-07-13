@@ -14,6 +14,8 @@ const props = defineProps({
     values: { type: Object, default: () => ({}) },
     // Точки НП: [{ id, name, lat, lon, value }] — рисуются кружками поверх областей
     points: { type: Array, default: () => [] },
+    // Произвольные маркеры: [{ lat, lon, html, tooltip }] — div-иконки (стрелки ветра, очаги)
+    markers: { type: Array, default: () => [] },
     legendTitle: { type: String, default: 'Значение' },
     height: { type: String, default: '520px' }
 });
@@ -24,6 +26,7 @@ const container = ref(null);
 let map = null;
 let geoLayer = null;
 let pointsLayer = null;
+let markersLayer = null;
 let legend = null;
 
 const PALETTE = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15'];
@@ -61,6 +64,21 @@ function renderPoints() {
     ).addTo(map);
     const bounds = L.latLngBounds(props.points.map((p) => [p.lat, p.lon]));
     map.fitBounds(bounds, { padding: [30, 30] });
+}
+
+function renderMarkers() {
+    if (markersLayer) markersLayer.remove();
+    if (props.markers.length === 0) return;
+    markersLayer = L.layerGroup(
+        props.markers.map((m) => {
+            const marker = L.marker([m.lat, m.lon], {
+                icon: L.divIcon({ className: 'kz-map-divicon', html: m.html, iconSize: [24, 24], iconAnchor: [12, 12] }),
+                interactive: Boolean(m.tooltip)
+            });
+            if (m.tooltip) marker.bindTooltip(m.tooltip);
+            return marker;
+        })
+    ).addTo(map);
 }
 
 function styleFeature(feature) {
@@ -131,6 +149,7 @@ async function initMap() {
     geoLayer = L.geoJSON(geojson, { style: styleFeature, onEachFeature }).addTo(map);
     map.fitBounds(geoLayer.getBounds(), { padding: [10, 10] });
     renderPoints();
+    renderMarkers();
     renderLegend();
 }
 
@@ -152,6 +171,14 @@ watch(
             renderPoints();
             renderLegend();
         }
+    },
+    { deep: true }
+);
+
+watch(
+    () => props.markers,
+    () => {
+        if (map) renderMarkers();
     },
     { deep: true }
 );
@@ -180,6 +207,14 @@ onBeforeUnmount(() => map?.remove());
 .kz-map-legend-title {
     font-weight: 600;
     margin-bottom: 0.25rem;
+}
+.kz-map-divicon {
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
 }
 .kz-map-legend i {
     display: inline-block;

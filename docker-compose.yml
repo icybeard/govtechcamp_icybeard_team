@@ -29,6 +29,7 @@ services:
       Jwt__Key: ${JWT_KEY:-dev-only-signing-key-change-in-production-0123456789abcdef}
       Seed__AdminEmail: ${SEED_ADMIN_EMAIL:-admin@icybeard.local}
       Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:-ChangeMe123!}
+      Firms__MapKey: ${FIRMS_MAP_KEY:-}
       Cors__Origins: http://localhost:5173
     ports:
       - "5080:8080"
