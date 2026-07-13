@@ -187,16 +187,19 @@ async function setStatus(measure, status) {
             </div>
         </div>
 
-        <div class="col-span-12 lg:col-span-8">
+        <div class="col-span-12">
             <div class="card mb-0">
-                <KazakhstanMap :values="regionValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" legend-title="Риск паводка" @point-click="selected = $event" @region-click="selected = null" />
-            </div>
-        </div>
+                <div class="relative">
+                    <KazakhstanMap height="72vh" :values="regionValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" legend-title="Риск паводка" @point-click="selected = $event" @region-click="selected = null" />
 
-        <div class="col-span-12 lg:col-span-4">
-            <div class="card mb-0 h-full">
-                <h5>Населённый пункт</h5>
-                <template v-if="selected">
+                    <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
+                        <Tag value="Кликните НП — скор, факторы «почему» и меры" severity="secondary" />
+                    </div>
+                    <div v-else class="card m-0 shadow-lg" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000; width: 340px; max-width: 85%; max-height: calc(100% - 2rem); overflow-y: auto">
+                        <div class="flex items-start justify-between mb-2">
+                            <h5 class="m-0">Населённый пункт</h5>
+                            <Button icon="pi pi-times" text rounded size="small" @click="selected = null" />
+                        </div>
                     <div class="text-2xl font-medium mb-1">{{ selected.name }}</div>
                     <div class="text-muted-color mb-3" v-if="selected.population">Население: {{ selected.population.toLocaleString('ru-RU') }}</div>
                     <div class="mb-4 flex items-center gap-2 flex-wrap">
@@ -221,9 +224,10 @@ async function setStatus(measure, status) {
                             <Tag :value="statusLabel[m.status]" :severity="statusSeverity[m.status]" />
                         </li>
                     </ul>
-                    <p v-else class="text-muted-color">Мер пока нет.</p>
-                </template>
-                <p v-else class="text-muted-color">Кликните населённый пункт на карте — здесь появятся скор, объяснение факторов и меры.</p>
+                        <p v-else-if="selected.value < 20" class="text-muted-color">Риск низкий (скор {{ selected.value }} из 100) — превентивные меры не требуются.</p>
+                        <p v-else class="text-muted-color">Мер пока нет — сгенерируйте черновики.</p>
+                    </div>
+                </div>
             </div>
         </div>
 

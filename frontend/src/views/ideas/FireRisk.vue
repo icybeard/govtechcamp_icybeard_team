@@ -101,16 +101,19 @@ function onRegionClick(region) {
             </div>
         </div>
 
-        <div class="col-span-12 lg:col-span-8">
+        <div class="col-span-12">
             <div class="card mb-0">
-                <KazakhstanMap :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" legend-title="Метео-индекс" @region-click="onRegionClick" />
-            </div>
-        </div>
+                <div class="relative">
+                    <KazakhstanMap height="72vh" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" legend-title="Метео-индекс" @region-click="onRegionClick" />
 
-        <div class="col-span-12 lg:col-span-4">
-            <div class="card mb-0 h-full">
-                <h5>Область</h5>
-                <template v-if="selected">
+                    <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
+                        <Tag value="Кликните область — разбор метео-индекса" severity="secondary" />
+                    </div>
+                    <div v-else class="card m-0 shadow-lg" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000; width: 340px; max-width: 85%; max-height: calc(100% - 2rem); overflow-y: auto">
+                        <div class="flex items-start justify-between mb-2">
+                            <h5 class="m-0">Область</h5>
+                            <Button icon="pi pi-times" text rounded size="small" @click="selected = null" />
+                        </div>
                     <div class="text-2xl font-medium mb-2">{{ selected.name }}</div>
                     <div class="mb-4">
                         Метео-индекс:
@@ -125,20 +128,15 @@ function onRegionClick(region) {
                         </li>
                     </ul>
 
-                    <ul class="list-none p-0 m-0 flex flex-col gap-2 text-muted-color">
-                        <li>Ветер: {{ selected.windSpeed }} км/ч, {{ degToCompass(selected.windDir) }}</li>
-                        <li>Осадки: вчера {{ selected.precip24h }} мм, за 7 дней {{ selected.precip7d }} мм</li>
-                    </ul>
-                </template>
-                <p v-else class="text-muted-color">Кликните область — здесь появится разбор метео-индекса: температура, сухость, ветер, дни без осадков.</p>
-
-                <template v-if="!loading">
-                    <h6 class="mt-4">Дальше по плану</h6>
-                    <p class="text-muted-color m-0">
-                        ML-прогноз на завтра по ячейкам 10×10 км (FIRMS 2001–2026 + ERA5 + NDVI) и очередь патрулей — см.
-                        docs/ideas/i9-fire-risk/. Метео-индекс выше — прозрачный baseline этой модели.
-                    </p>
-                </template>
+                        <ul class="list-none p-0 m-0 flex flex-col gap-2 text-muted-color">
+                            <li>Ветер: {{ selected.windSpeed }} км/ч, {{ degToCompass(selected.windDir) }}</li>
+                            <li>Осадки: вчера {{ selected.precip24h }} мм, за 7 дней {{ selected.precip7d }} мм</li>
+                        </ul>
+                        <p class="text-muted-color mt-3 mb-0 text-sm">
+                            Метео-индекс — прозрачный baseline; ML-прогноз по ячейкам 10×10 км — в docs/ideas/i9-fire-risk/.
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
