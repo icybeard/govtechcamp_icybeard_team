@@ -10,12 +10,17 @@ export function degToCompass(deg) {
 
 function centroid(feature) {
     // центр bbox внешнего кольца — достаточно для стрелки ветра
-    let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+    let minLat = 90,
+        maxLat = -90,
+        minLon = 180,
+        maxLon = -180;
     const rings = feature.geometry.type === 'MultiPolygon' ? feature.geometry.coordinates.flat(1) : feature.geometry.coordinates;
     for (const ring of rings) {
         for (const [lon, lat] of ring) {
-            minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
-            minLon = Math.min(minLon, lon); maxLon = Math.max(maxLon, lon);
+            minLat = Math.min(minLat, lat);
+            maxLat = Math.max(maxLat, lat);
+            minLon = Math.min(minLon, lon);
+            maxLon = Math.max(maxLon, lon);
         }
     }
     return { lat: (minLat + maxLat) / 2, lon: (minLon + maxLon) / 2 };

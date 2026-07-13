@@ -4,7 +4,7 @@
 demo-data:
 	python3 scripts/load_settlements.py KZ-SEV data/raw/settlements_kz-sev.csv
 	python3 scripts/load_scores.py KZ-SEV data/processed/scores_ml_kz-sev.csv
-	@for y in $$(seq 2010 2024); do \
+	@for y in $$(seq 2010 2026); do \
 		python3 scripts/load_scores.py KZ-SEV data/processed/scores_$${y}_kz-sev.csv --period $$y | tail -1; \
 	done
 

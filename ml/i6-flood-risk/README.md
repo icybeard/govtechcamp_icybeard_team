@@ -34,10 +34,10 @@ python3 scripts/load_scores.py KZ-SEV data/processed/scores_ml_kz-sev.csv
 # 5. Ретроспектива сезонов 2010–2024 (селект «Сезон» и график на странице И-6):
 #    погода каждого года из того же ERA5 → скоры модели → API с period=YYYY
 .venv/bin/python scripts/compute_season_features.py \
-    data/raw/era5_kz-sev/data_stream-moda.nc data/processed/features_kz-sev.csv data/processed 2010 2024
+    data/raw/era5_kz-sev/data_stream-moda.nc data/processed/features_kz-sev.csv data/processed 2010 2026
 .venv/bin/python ml/i6-flood-risk/score_years.py \
-    data/processed/features_kz-sev.csv data/raw/labels_2024.csv data/processed 2010 2024
-for y in $(seq 2010 2024); do \
+    data/processed/features_kz-sev.csv data/raw/labels_2024.csv data/processed 2010 2026
+for y in $(seq 2010 2026); do \
     python3 scripts/load_scores.py KZ-SEV data/processed/scores_${y}_kz-sev.csv --period $y; done
 ```
 

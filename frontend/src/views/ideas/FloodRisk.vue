@@ -13,8 +13,8 @@ const CURRENT_SEASON = '2024';
 
 // Ретроспектива сезонов: модель 2024 на погоде каждого года (см. ml/i6-flood-risk/score_years.py)
 const season = ref(CURRENT_SEASON);
-const seasonOptions = Array.from({ length: 15 }, (_, i) => String(2024 - i)).map((y) => ({
-    label: y === CURRENT_SEASON ? `${y} (актуальный)` : y,
+const seasonOptions = Array.from({ length: 17 }, (_, i) => String(2026 - i)).map((y) => ({
+    label: y === CURRENT_SEASON ? `${y} (паводок — обучение модели)` : y,
     value: y
 }));
 const seasonSummary = ref([]);

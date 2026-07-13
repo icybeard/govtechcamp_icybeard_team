@@ -32,7 +32,7 @@ def main() -> None:
         {
             "product_type": "monthly_averaged_reanalysis",
             "variable": VARIABLES,
-            "year": [str(y) for y in range(2000, 2025)],
+            "year": [str(y) for y in range(2000, 2027)],
             "month": ["01", "02", "03", "04", "11", "12"],
             "time": "00:00",
             "area": AREA_KZ_SEV,
