@@ -1,7 +1,7 @@
 // Живая погода по областям (Open-Meteo, без ключа): текущие температура/влажность/ветер
 // + осадки за 7 прошлых дней и прогноз на сегодня. Используется обеими картами.
 
-let centroidsCache = null;
+const centroidsCache = new Map(); // geoUrl -> список центроидов
 
 export function degToCompass(deg) {
     const dirs = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'];
@@ -26,31 +26,43 @@ function centroid(feature) {
     return { lat: (minLat + maxLat) / 2, lon: (minLon + maxLon) / 2 };
 }
 
-async function regionCentroids() {
-    if (centroidsCache) return centroidsCache;
-    const geo = await (await fetch('/geo/kz-regions.geojson')).json();
-    centroidsCache = geo.features.map((f) => ({ iso: f.properties.shapeISO, name: f.properties.shapeName, ...centroid(f) }));
-    return centroidsCache;
+async function regionCentroids(geoUrl) {
+    if (centroidsCache.has(geoUrl)) return centroidsCache.get(geoUrl);
+    const geo = await (await fetch(geoUrl)).json();
+    const list = geo.features.map((f) => ({
+        iso: f.properties.shapeISO || f.properties.shapeID, // у ADM2 ISO пуст
+        name: f.properties.shapeName,
+        ...centroid(f)
+    }));
+    centroidsCache.set(geoUrl, list);
+    return list;
 }
 
 /**
  * Возвращает { updatedAt, regions: { iso: { iso, name, lat, lon, temp, humidity,
  * windSpeed, windDir, precip7d, precip24h, forecast24h, dryDays } } }.
  */
-export async function fetchRegionWeather() {
-    const regions = await regionCentroids();
-    const params = new URLSearchParams({
-        latitude: regions.map((r) => r.lat.toFixed(3)).join(','),
-        longitude: regions.map((r) => r.lon.toFixed(3)).join(','),
-        current: 'temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m',
-        daily: 'precipitation_sum',
-        past_days: '7',
-        forecast_days: '1',
-        timezone: 'UTC'
-    });
-    const payload = await (await fetch(`https://api.open-meteo.com/v1/forecast?${params}`)).json();
-
+export async function fetchRegionWeather(geoUrl = '/geo/kz-regions.geojson') {
+    const regions = await regionCentroids(geoUrl);
     const result = {};
+    const payload = [];
+    for (let i = 0; i < regions.length; i += 100) {
+        const batch = regions.slice(i, i + 100);
+        const params = new URLSearchParams({
+            latitude: batch.map((r) => r.lat.toFixed(3)).join(','),
+            longitude: batch.map((r) => r.lon.toFixed(3)).join(','),
+            current: 'temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m',
+            daily: 'precipitation_sum',
+            past_days: '7',
+            forecast_days: '1',
+            timezone: 'UTC'
+        });
+        const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+        if (!response.ok) throw new Error(`Open-Meteo: ${response.status}`);
+        const part = await response.json();
+        payload.push(...(Array.isArray(part) ? part : [part]));
+        if (i + 100 < regions.length) await new Promise((r) => setTimeout(r, 400));
+    }
     payload.forEach((w, i) => {
         const daily = w.daily.precipitation_sum; // [7 прошлых дней, сегодня(прогноз)]
         const pastDays = daily.slice(0, 7);

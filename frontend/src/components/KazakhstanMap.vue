@@ -21,6 +21,8 @@ const props = defineProps({
     tileOverlays: { type: Array, default: () => [] },
     // Сетка ветра [uRecord, vRecord] (формат leaflet-velocity) — анимированные частицы
     windGrid: { type: Array, default: null },
+    // GeoJSON административных границ (области по умолчанию; /geo/kz-districts.geojson — районы)
+    geoUrl: { type: String, default: '/geo/kz-regions.geojson' },
     legendTitle: { type: String, default: 'Значение' },
     height: { type: String, default: '520px' }
 });
@@ -107,8 +109,13 @@ function renderMarkers() {
     ).addTo(map);
 }
 
+// у ADM1 ключ — shapeISO, у ADM2 (районы) ISO пуст — используем shapeID
+function featureKey(feature) {
+    return feature.properties.shapeISO || feature.properties.shapeID;
+}
+
 function styleFeature(feature) {
-    const iso = feature.properties.shapeISO;
+    const iso = featureKey(feature);
     const range = valueRange();
     return {
         weight: 1,
@@ -120,9 +127,9 @@ function styleFeature(feature) {
 
 function regionPayload(feature) {
     return {
-        iso: feature.properties.shapeISO,
+        iso: featureKey(feature),
         name: feature.properties.shapeName,
-        value: props.values[feature.properties.shapeISO] ?? null
+        value: props.values[featureKey(feature)] ?? null
     };
 }
 
@@ -171,16 +178,19 @@ async function initMap() {
     L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap, geoBoundaries').addTo(map);
 
     if (props.tileOverlays.length) {
+        // отдельная панель выше хороплета (overlayPane z=400), ниже маркеров (600):
+        // иначе осадки/снимок «ныряют» под заливку рисков
+        map.createPane('weatherTiles').style.zIndex = 450;
         const overlays = Object.fromEntries(
             props.tileOverlays.map((t) => [
                 t.name,
-                L.tileLayer(t.url, { opacity: t.opacity ?? 1, maxNativeZoom: t.maxNativeZoom, maxZoom: 12, attribution: t.attribution })
+                L.tileLayer(t.url, { pane: 'weatherTiles', opacity: t.opacity ?? 1, maxNativeZoom: t.maxNativeZoom, maxZoom: 12, attribution: t.attribution })
             ])
         );
         L.control.layers(null, overlays, { position: 'topleft', collapsed: true }).addTo(map);
     }
 
-    const response = await fetch('/geo/kz-regions.geojson');
+    const response = await fetch(props.geoUrl);
     const geojson = await response.json();
     geoLayer = L.geoJSON(geojson, { style: styleFeature, onEachFeature }).addTo(map);
     map.fitBounds(geoLayer.getBounds(), { padding: [10, 10] });

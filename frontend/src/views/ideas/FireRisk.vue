@@ -2,7 +2,7 @@
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
 import { api } from '@/service/api';
 import { gibsOverlays } from '@/service/gibs';
-import { degToCompass, fetchRegionWeather, fetchWindGrid, windMarkers } from '@/service/weather';
+import { degToCompass, fetchRegionWeather, fetchWindGrid } from '@/service/weather';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 /**
@@ -12,6 +12,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
  * Индекс — прозрачная формула (не ML): temp/35·25 + (100−RH)/100·35 + wind/40·20 + dryDays/7·20.
  */
 const REFRESH_MS = 15 * 60 * 1000;
+// Районы (ADM2, 174 шт.) вместо областей — детальнее для патрулей
+const GEO_URL = '/geo/kz-districts.geojson';
 
 const loading = ref(true);
 const error = ref(null);
@@ -26,15 +28,15 @@ const tileOverlays = gibsOverlays();
 
 const indexValues = computed(() => Object.fromEntries(Object.entries(regionWeather.value).map(([iso, w]) => [iso, w.index])));
 
-const markers = computed(() => [
-    ...windMarkers(regionWeather.value, (w) => `${w.name}: ветер ${w.windSpeed} км/ч, ${degToCompass(w.windDir)}; осадки 24ч ${w.precip24h} мм`),
-    ...hotspots.value.map((h) => ({
+// стрелки по 174 районам были бы кашей — ветер показывает анимация частиц
+const markers = computed(() =>
+    hotspots.value.map((h) => ({
         lat: h.lat,
         lon: h.lon,
         html: '<span style="font-size:14px">🔥</span>',
         tooltip: `Очаг ${h.date} ${String(h.time).padStart(4, '0')} UTC · мощность ${h.frp} МВт (${h.satellite})`
     }))
-]);
+);
 
 function clamp01(x) {
     return Math.max(0, Math.min(1, x));
@@ -52,7 +54,7 @@ function computeIndex(w) {
 
 async function refresh() {
     try {
-        const { updatedAt: at, regions } = await fetchRegionWeather();
+        const { updatedAt: at, regions } = await fetchRegionWeather(GEO_URL);
         for (const w of Object.values(regions)) Object.assign(w, computeIndex(w));
         regionWeather.value = regions;
         updatedAt.value = at;
@@ -94,7 +96,7 @@ function onRegionClick(region) {
                 <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
                     <div>
                         <h4 class="m-0">И-9. Пожарная обстановка — live</h4>
-                        <span class="text-muted-color">Метео-индекс (Open-Meteo, сейчас) + очаги NASA FIRMS за 24 ч + слои GIBS. Обновление каждые 15 минут.</span>
+                        <span class="text-muted-color">Метео-индекс по районам (Open-Meteo, сейчас) + очаги NASA FIRMS за 24 ч + слои GIBS. Обновление каждые 15 минут.</span>
                     </div>
                     <div class="flex items-center gap-3">
                         <Tag v-if="updatedAt" :value="`обновлено ${updatedAt}`" severity="success" />
@@ -110,14 +112,14 @@ function onRegionClick(region) {
         <div class="col-span-12">
             <div class="card mb-0">
                 <div class="relative">
-                    <KazakhstanMap height="72vh" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="windGrid" legend-title="Метео-индекс" @region-click="onRegionClick" />
+                    <KazakhstanMap height="72vh" :geo-url="GEO_URL" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="windGrid" legend-title="Метео-индекс" @region-click="onRegionClick" />
 
                     <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
-                        <Tag value="Кликните область — разбор метео-индекса" severity="secondary" />
+                        <Tag value="Кликните район — разбор метео-индекса" severity="secondary" />
                     </div>
                     <div v-else class="card m-0 shadow-lg" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000; width: 340px; max-width: 85%; max-height: calc(100% - 2rem); overflow-y: auto">
                         <div class="flex items-start justify-between mb-2">
-                            <h5 class="m-0">Область</h5>
+                            <h5 class="m-0">Район</h5>
                             <Button icon="pi pi-times" text rounded size="small" @click="selected = null" />
                         </div>
                     <div class="text-2xl font-medium mb-2">{{ selected.name }}</div>

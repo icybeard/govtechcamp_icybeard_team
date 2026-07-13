@@ -10,20 +10,26 @@ AI-решение для госсектора Казахстана (отборо
 | `i9-fire-risk` | Степные/лесные пожары: риск-карта и раннее оповещение | в работе |
 | `poaching` | Мониторинг браконьерства | в работе |
 
-## Быстрый старт (одна команда)
+## Быстрый старт (одна команда, нужен только Docker)
+
+Работает одинаково на Windows / macOS / Linux — `make` не требуется:
 
 ```bash
-make up
+docker compose up --build -d
 ```
 
-Весь стек в docker-контейнерах: PostgreSQL (+PostGIS) → API (миграции применяются сами) → веб-клиент (nginx). При первом запуске создаётся `.env` из `.env.example` — там логин/пароль суперпользователя и JWT-ключ (поменяйте при необходимости; `.env` в git не попадает).
+Весь стек в docker-контейнерах: PostgreSQL (+PostGIS) → API → веб-клиент (nginx). Миграции, справочники и **данные пилота (520 НП СКО, ML-скоры, 17 сезонов) загружаются автоматически** при первом старте — ничего доустанавливать и настраивать не нужно (`.env` опционален: у compose есть значения по умолчанию).
 
-- **Веб-клиент:** http://localhost:5173 — вход суперпользователем из `.env` (по умолчанию `admin@icybeard.local` / `ChangeMe123!`)
+- **Веб-клиент:** http://localhost:5173 — вход `admin@icybeard.local` / `ChangeMe123!`
 - **API:** http://localhost:5080 (`/api/health`); из веб-клиента `/api` проксирует nginx
-- `Ctrl+C` — остановить; `make upd` — в фоне; `make down` — погасить; `make clean` — сброс БД; `make logs` — логи
-- Первый запуск: **`make demo-data`** (после старта стека) — загружает 606 НП СКО и ML-скоры риска, карта оживает
+- Остановить: `docker compose down`; полный сброс БД: `docker compose down -v`
+- На macOS/Linux есть сокращения: `make up` / `make upd` / `make down` / `make clean` / `make logs`
 
-Для запуска нужен только Docker. Для локальной разработки с hot-reload (нужны .NET SDK 10 и Node.js 20+): `make db` + `make backend` + `make frontend` — vite и `dotnet watch` быстрее пересборки контейнеров. Детали — в [backend/README.md](backend/README.md) и [frontend/README.md](frontend/README.md).
+**Опционально:** очаги пожаров NASA FIRMS на карте И-9 требуют бесплатный ключ (2 минуты: firms.modaps.eosdis.nasa.gov/api → Generate MAP_KEY → в `.env`: `FIRMS_MAP_KEY=...`). Без ключа всё остальное работает, страница честно сообщает, чего не хватает.
+
+**Демо-сценарий (2 минуты):** войти → Дашборд (сводка) → «И-6 Паводковый риск»: карта СКО, клик по селу → скор и факторы «почему» → «Сгенерировать черновики мер» → утвердить меру в таблице (фиксируется кто/когда) → селект «Сезон» и график снегозапаса → «И-9 Пожарный риск»: live-обстановка, ветер, метео-индекс по областям.
+
+Для локальной разработки с hot-reload (нужны .NET SDK 10 и Node.js 20+): `make db` + `make backend` + `make frontend`. Детали — в [backend/README.md](backend/README.md) и [frontend/README.md](frontend/README.md).
 
 ## Стек
 

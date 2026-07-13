@@ -69,6 +69,7 @@ using (var scope = app.Services.CreateScope())
     {
         await db.Database.MigrateAsync();
         await DbSeeder.SeedAsync(db, app.Configuration);
+        await DataFileSeeder.SeedAsync(db, app.Logger);
     }
     catch (Exception ex)
     {

@@ -20,7 +20,9 @@ services:
       retries: 30
 
   api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: govtech-api
     environment:
       ASPNETCORE_ENVIRONMENT: Development
