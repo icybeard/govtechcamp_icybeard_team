@@ -5,10 +5,20 @@ import { isAdmin } from '@/service/auth';
 import { gibsOverlays } from '@/service/gibs';
 import { degToCompass, fetchRegionWeather, windMarkers } from '@/service/weather';
 import { useToast } from 'primevue/usetoast';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const REGION = 'KZ-SEV'; // СКО — пилотный регион И-6 (см. docs/ideas/i6-flood-risk/plan.md)
 const MODULE = 'flood-risk';
+const CURRENT_SEASON = '2024';
+
+// Ретроспектива сезонов: модель 2024 на погоде каждого года (см. ml/i6-flood-risk/score_years.py)
+const season = ref(CURRENT_SEASON);
+const seasonOptions = Array.from({ length: 15 }, (_, i) => String(2024 - i)).map((y) => ({
+    label: y === CURRENT_SEASON ? `${y} (актуальный)` : y,
+    value: y
+}));
+const seasonSummary = ref([]);
+const base2024Scores = ref({}); // settlementId -> скор 2024 для сравнения в деталке
 
 const toast = useToast();
 
@@ -55,13 +65,8 @@ const scoreBySettlement = computed(() => Object.fromEntries(points.value.map((p)
 const statusSeverity = { Proposed: 'warn', Approved: 'success', Rejected: 'danger', Done: 'info' };
 const statusLabel = { Proposed: 'Предложено', Approved: 'Утверждено', Rejected: 'Отклонено', Done: 'Выполнено' };
 
-async function loadAll() {
-    const [settlementScores, regionScores, measureList] = await Promise.all([
-        api.get(`/settlements/metrics/${MODULE}?metricKey=risk_score`),
-        api.get(`/regions/metrics/${MODULE}?metricKey=risk_score`),
-        api.get(`/measures/?module=${MODULE}`)
-    ]);
-    points.value = settlementScores.map((s) => ({
+function toPoint(s) {
+    return {
         id: s.settlementId,
         name: s.name,
         lat: s.lat,
@@ -69,9 +74,27 @@ async function loadAll() {
         value: Math.round(s.value),
         population: s.population,
         factors: s.factors
-    }));
+    };
+}
+
+async function loadSeasonScores() {
+    const rows = await api.get(`/settlements/metrics/${MODULE}?metricKey=risk_score&period=${season.value}`);
+    points.value = rows.map(toPoint);
+    selected.value = null;
+}
+
+async function loadAll() {
+    const [settlementScores, regionScores, measureList, summary] = await Promise.all([
+        api.get(`/settlements/metrics/${MODULE}?metricKey=risk_score&period=${CURRENT_SEASON}`),
+        api.get(`/regions/metrics/${MODULE}?metricKey=risk_score`),
+        api.get(`/measures/?module=${MODULE}`),
+        fetch('/data/season-summary.json').then((r) => (r.ok ? r.json() : []))
+    ]);
+    points.value = settlementScores.map(toPoint);
+    base2024Scores.value = Object.fromEntries(settlementScores.map((s) => [s.settlementId, Math.round(s.value)]));
     regionValues.value = regionScores;
     measures.value = measureList;
+    seasonSummary.value = summary;
 }
 
 let weatherTimer = null;
@@ -87,6 +110,28 @@ onMounted(async () => {
     }
 });
 onBeforeUnmount(() => clearInterval(weatherTimer));
+
+watch(season, loadSeasonScores);
+
+const chartData = computed(() => ({
+    labels: seasonSummary.value.map((s) => s.year),
+    datasets: [
+        {
+            label: 'Снегозапас марта, % нормы',
+            data: seasonSummary.value.map((s) => s.sweMedianPctNorm),
+            backgroundColor: seasonSummary.value.map((s) => (String(s.year) === season.value ? '#1d4ed8' : '#93c5fd')),
+            borderRadius: 4
+        }
+    ]
+}));
+const chartOptions = {
+    plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true, title: { display: true, text: '% нормы' } } },
+    onClick: (_, elements) => {
+        if (elements.length) season.value = String(seasonSummary.value[elements[0].index].year);
+    },
+    maintainAspectRatio: false
+};
 
 async function generateMeasures() {
     generating.value = true;
@@ -122,6 +167,10 @@ async function setStatus(measure, status) {
                     </div>
                     <div class="flex items-center gap-3 flex-wrap">
                         <div class="flex items-center gap-2">
+                            <label for="seasonSelect" class="text-muted-color">Сезон</label>
+                            <Select v-model="season" inputId="seasonSelect" :options="seasonOptions" optionLabel="label" optionValue="value" size="small" />
+                        </div>
+                        <div class="flex items-center gap-2">
                             <ToggleSwitch v-model="liveWeather" inputId="liveWeather" />
                             <label for="liveWeather" class="text-muted-color">Live-погода</label>
                             <Tag v-if="liveWeather && weatherUpdatedAt" :value="`обновлено ${weatherUpdatedAt}`" severity="success" />
@@ -150,9 +199,10 @@ async function setStatus(measure, status) {
                 <template v-if="selected">
                     <div class="text-2xl font-medium mb-1">{{ selected.name }}</div>
                     <div class="text-muted-color mb-3" v-if="selected.population">Население: {{ selected.population.toLocaleString('ru-RU') }}</div>
-                    <div class="mb-4">
-                        Скор риска:
+                    <div class="mb-4 flex items-center gap-2 flex-wrap">
+                        Скор риска ({{ season }}):
                         <Tag :value="selected.value ?? '—'" :severity="selected.value > 60 ? 'danger' : selected.value > 30 ? 'warn' : 'success'" />
+                        <Tag v-if="season !== CURRENT_SEASON && base2024Scores[selected.id] !== undefined" :value="`2024: ${base2024Scores[selected.id]}`" severity="secondary" />
                     </div>
 
                     <h6>Почему такой скор</h6>
@@ -174,6 +224,18 @@ async function setStatus(measure, status) {
                     <p v-else class="text-muted-color">Мер пока нет.</p>
                 </template>
                 <p v-else class="text-muted-color">Кликните населённый пункт на карте — здесь появятся скор, объяснение факторов и меры.</p>
+            </div>
+        </div>
+
+        <div v-if="seasonSummary.length" class="col-span-12">
+            <div class="card mb-0">
+                <div class="flex items-center justify-between mb-2">
+                    <h5 class="m-0">Снегозапас марта по сезонам, % нормы (клик — переключить сезон)</h5>
+                    <span class="text-muted-color">ERA5-Land, медиана по НП региона</span>
+                </div>
+                <div style="height: 180px">
+                    <Chart type="bar" :data="chartData" :options="chartOptions" style="height: 100%" />
+                </div>
             </div>
         </div>
 

@@ -5,7 +5,9 @@
 Логин суперпользователем из .env. Только стандартная библиотека.
 
 Использование:
-    python3 scripts/load_scores.py KZ-SEV data/processed/scores_kz-sev.csv [http://localhost:5080]
+    python3 scripts/load_scores.py KZ-SEV data/processed/scores_kz-sev.csv [http://localhost:5080] [--period YYYY]
+
+--period — срез сезона (SettlementMetric.Period); без него пишется в '' (актуальные скоры, к ним привязаны меры).
 """
 import csv
 import json
@@ -41,10 +43,15 @@ def request_json(method: str, url: str, payload=None, token=None) -> dict:
 
 
 def main() -> None:
-    if len(sys.argv) not in (3, 4):
+    args = sys.argv[1:]
+    period = None
+    if "--period" in args:
+        period = args[args.index("--period") + 1]
+        del args[args.index("--period") : args.index("--period") + 2]
+    if len(args) not in (2, 3):
         sys.exit(__doc__)
-    iso, csv_path = sys.argv[1], sys.argv[2]
-    base_url = (sys.argv[3] if len(sys.argv) == 4 else "http://localhost:5080").rstrip("/")
+    iso, csv_path = args[0], args[1]
+    base_url = (args[2] if len(args) == 3 else "http://localhost:5080").rstrip("/")
 
     env = read_env()
     auth = request_json(
@@ -76,10 +83,11 @@ def main() -> None:
 
     result = request_json(
         "PUT", f"{base_url}/api/settlements/metrics",
-        {"module": MODULE, "metricKey": METRIC_KEY, "period": None, "values": values},
+        {"module": MODULE, "metricKey": METRIC_KEY, "period": period, "values": values},
         token=token,
     )
-    print(f"Загружено скоров: {result['updated']}, не сматчилось по имени: {unmatched}")
+    suffix = f" (period={period})" if period else ""
+    print(f"Загружено скоров: {result['updated']}{suffix}, не сматчилось по имени: {unmatched}")
 
 
 if __name__ == "__main__":

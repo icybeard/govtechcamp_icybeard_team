@@ -1,9 +1,12 @@
 .PHONY: up upd down clean logs db backend frontend build demo-data
 
-## make demo-data — загрузить данные пилота (НП СКО + ML-скоры) в запущенный стек
+## make demo-data — загрузить данные пилота (НП СКО + ML-скоры + сезоны 2010–2024) в запущенный стек
 demo-data:
 	python3 scripts/load_settlements.py KZ-SEV data/raw/settlements_kz-sev.csv
 	python3 scripts/load_scores.py KZ-SEV data/processed/scores_ml_kz-sev.csv
+	@for y in $$(seq 2010 2024); do \
+		python3 scripts/load_scores.py KZ-SEV data/processed/scores_$${y}_kz-sev.csv --period $$y | tail -1; \
+	done
 
 ## .env создаётся из примера при первом запуске (креды суперпользователя, JWT-ключ)
 .env:
