@@ -6,9 +6,9 @@ AI-решение для госсектора Казахстана (отборо
 
 | Код | Идея | Статус |
 | --- | --- | --- |
-| `i6-flood-risk` | Паводковый риск-скоринг населённых пунктов ⭐ фаворит | в работе |
-| `i9-fire-risk` | Степные/лесные пожары: риск-карта и раннее оповещение | в работе |
-| `poaching` | Мониторинг браконьерства | в работе |
+| `i6-flood-risk` | Паводковый риск-скоринг ⭐ **основной кейс** | MVP готов: LightGBM на разметке-2024 (ROC-AUC 0.867 против 0.794 у baseline), 520 НП СКО, SHAP-объяснения, очередь мер, сезоны 2010–2026 |
+| `i9-fire-risk` | Пожарная обстановка | live-карта: метео-индекс по 174 районам, очаги NASA FIRMS, ветер; ML-прогноз — в «дальнейших шагах» |
+| `poaching` | Мониторинг браконьерства | концепция (см. docs/ideas/poaching) |
 
 ## Быстрый старт (одна команда, нужен только Docker)
 
@@ -33,10 +33,10 @@ docker compose up --build -d
 
 ## Стек
 
-- **Frontend:** Vue 3 + PrimeVue (шаблон [Sakai](https://sakai.primevue.org/)), Leaflet-карта Казахстана
-- **Backend:** .NET 10 minimal API, JWT-аутентификация, роли Admin/Analyst
-- **DB:** PostgreSQL + PostGIS, EF Core миграции (применяются автоматически)
-- **ML/Data:** Python-ноутбуки и пайплайны в `ml/`, результаты загружаются в API (`PUT /api/regions/metrics`)
+- **Frontend:** Vue 3 + PrimeVue (шаблон [Sakai](https://sakai.primevue.org/)); карта — Leaflet + анимация ветра (leaflet-velocity) + спутниковые слои NASA GIBS
+- **Backend:** .NET 10 minimal API, JWT-аутентификация, роли Admin/Analyst, прокси NASA FIRMS
+- **DB:** PostgreSQL + PostGIS, EF Core миграции + автосид данных пилота при первом старте
+- **ML/Data:** Python-пайплайн в `ml/` и `scripts/` (LightGBM + TreeSHAP); живая погода — Open-Meteo без ключей
 
 ## Структура репозитория
 
@@ -58,9 +58,11 @@ docker compose up --build -d
 
 ## Как данные попадают на карту
 
-1. ML-пайплайн (`ml/<идея>/`) считает скоры по регионам.
-2. Загрузка в API: `PUT /api/regions/metrics` (роль Admin) с телом `{ module, metricKey, period, values: { "KZ-SEV": 87, ... } }`.
-3. Фронтенд читает `GET /api/regions/metrics/{module}` и передаёт объект в `<KazakhstanMap :values="..." />`.
+1. Скрипты (`scripts/`) собирают признаки: OSM (НП, реки), Copernicus DEM (рельеф), ERA5-Land (снегозапас/осадки, 2000–2026).
+2. `ml/i6-flood-risk/train.py` обучает LightGBM на разметке-2024 и отдаёт скоры + TreeSHAP-факторы; `score_years.py` скорит каждый сезон.
+3. Загрузка: `PUT /api/settlements/metrics` (роль Admin) — либо автосид из CSV при первом старте контейнера.
+4. Фронтенд: `GET /api/settlements/metrics/flood-risk?metricKey=risk_score&period=YYYY` → точки на карте, факторы в панели «Почему».
+5. Live-слои мимо БД: Open-Meteo (погода/ветер), NASA FIRMS через `/api/fire/hotspots`, тайлы NASA GIBS.
 
 ## Правила для команды (2 человека)
 
@@ -71,5 +73,7 @@ docker compose up --build -d
 
 ## Известные ограничения
 
-- Границы регионов (`frontend/public/geo/kz-regions.geojson`) — geoBoundaries 2017 г., **16 регионов, без Абайской, Жетысу и Улытау**. Заменить синхронно с сидером регионов (`backend/src/Api/Data/DbSeeder.cs`).
-- Скоры на страницах идей — демо-данные, до подключения ML-пайплайна.
+- Границы (`frontend/public/geo/kz-regions.geojson` и `kz-districts.geojson`) — geoBoundaries 2017 г.: 16 областей (без Абайской, Жетысу, Улытау) и 174 района. Заменить синхронно с сидером регионов (`DbSeeder.cs`).
+- Разметка затоплений-2024 — 17 позитивов из СМИ (PU-постановка, методика в `docs/data/flood-labels-methodology.md`); модель обучена на одном событии.
+- Очаги FIRMS берутся по прямоугольнику — видны точки и за границей РК.
+- Метео-индекс пожаров — прозрачный baseline (не ML); модель по ячейкам — план основной программы.
