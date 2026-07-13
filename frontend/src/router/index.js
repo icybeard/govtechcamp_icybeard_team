@@ -15,20 +15,18 @@ const router = createRouter({
                     component: () => import('@/views/Dashboard.vue')
                 },
                 {
-                    path: '/ideas/flood-risk',
+                    path: '/risks/flood',
                     name: 'flood-risk',
                     component: () => import('@/views/ideas/FloodRisk.vue')
                 },
                 {
-                    path: '/ideas/fire-risk',
+                    path: '/risks/fire',
                     name: 'fire-risk',
                     component: () => import('@/views/ideas/FireRisk.vue')
                 },
-                {
-                    path: '/ideas/poaching',
-                    name: 'poaching',
-                    component: () => import('@/views/ideas/Poaching.vue')
-                },
+                // старые пути — редирект, чтобы не ломать закладки
+                { path: '/ideas/flood-risk', redirect: '/risks/flood' },
+                { path: '/ideas/fire-risk', redirect: '/risks/fire' },
                 {
                     path: '/account/settings',
                     name: 'account-settings',

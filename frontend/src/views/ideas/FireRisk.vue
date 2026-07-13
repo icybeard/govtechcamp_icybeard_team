@@ -95,7 +95,7 @@ function onRegionClick(region) {
             <div class="card mb-0">
                 <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
                     <div>
-                        <h4 class="m-0">И-9. Пожарная обстановка — live</h4>
+                        <h4 class="m-0">Пожарная обстановка — live</h4>
                         <span class="text-muted-color">Метео-индекс по районам (Open-Meteo, сейчас) + очаги NASA FIRMS за 24 ч + слои GIBS. Обновление каждые 15 минут.</span>
                     </div>
                     <div class="flex items-center gap-3">
@@ -141,7 +141,7 @@ function onRegionClick(region) {
                             <li>Осадки: вчера {{ selected.precip24h }} мм, за 7 дней {{ selected.precip7d }} мм</li>
                         </ul>
                         <p class="text-muted-color mt-3 mb-0 text-sm">
-                            Метео-индекс — прозрачный baseline; ML-прогноз по ячейкам 10×10 км — в docs/ideas/i9-fire-risk/.
+                            Метео-индекс — прозрачный baseline; ML-прогноз по ячейкам 10×10 км — следующий шаг платформы.
                         </p>
                     </div>
                 </div>

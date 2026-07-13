@@ -164,8 +164,8 @@ async function setStatus(measure, status) {
             <div class="card mb-0">
                 <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
                     <div>
-                        <h4 class="m-0">И-6. Паводковый риск-скоринг</h4>
-                        <span class="text-muted-color">Риск весеннего затопления населённых пунктов. Пилот: Северо-Казахстанская область.</span>
+                        <h4 class="m-0">Паводковый риск-скоринг</h4>
+                        <span class="text-muted-color">Риск весеннего затопления населённых пунктов (ML-модель на событии 2024). Пилот: Северо-Казахстанская область.</span>
                     </div>
                     <div class="flex items-center gap-3 flex-wrap">
                         <div class="flex items-center gap-2">

@@ -4,7 +4,7 @@ import AppMenuItem from './AppMenuItem.vue';
 
 const model = ref([
     {
-        label: 'Главная',
+        label: 'Обзор',
         items: [
             {
                 label: 'Дашборд',
@@ -14,22 +14,17 @@ const model = ref([
         ]
     },
     {
-        label: 'Идеи',
+        label: 'Природные риски',
         items: [
             {
-                label: 'И-6. Паводковый риск',
+                label: 'Паводковый риск · СКО',
                 icon: 'pi pi-fw pi-cloud',
-                to: '/ideas/flood-risk'
+                to: '/risks/flood'
             },
             {
-                label: 'И-9. Пожарный риск',
+                label: 'Пожарная обстановка · live',
                 icon: 'pi pi-fw pi-sun',
-                to: '/ideas/fire-risk'
-            },
-            {
-                label: 'Браконьерство',
-                icon: 'pi pi-fw pi-eye',
-                to: '/ideas/poaching'
+                to: '/risks/fire'
             }
         ]
     },

@@ -45,10 +45,10 @@ function riskSeverity(value) {
             <div class="card mb-0">
                 <div class="flex items-center justify-between flex-wrap gap-3">
                     <div>
-                        <h4 class="m-0">Паводковый риск-скоринг — Северо-Казахстанская область</h4>
-                        <span class="text-muted-color">Скоринг по данным Sentinel/Copernicus DEM, OSM и ERA5-Land; решения принимает комиссия</span>
+                        <h4 class="m-0">Превентивное управление природными рисками</h4>
+                        <span class="text-muted-color">Паводковый риск-скоринг (пилот: СКО) + пожарная live-обстановка. AI предлагает — решение принимает человек.</span>
                     </div>
-                    <Button label="Открыть карту рисков" icon="pi pi-map" as="router-link" to="/ideas/flood-risk" />
+                    <Button label="Открыть карту рисков" icon="pi pi-map" as="router-link" to="/risks/flood" />
                 </div>
                 <Message v-if="error" severity="error" :closable="false" class="mt-3">{{ error }}</Message>
             </div>
@@ -135,7 +135,7 @@ function riskSeverity(value) {
                         <span class="font-medium text-xl">{{ measureCounts.Done }}</span>
                     </li>
                 </ul>
-                <Button label="К очереди мер" icon="pi pi-list" outlined class="w-full mt-6" as="router-link" to="/ideas/flood-risk" />
+                <Button label="К очереди мер" icon="pi pi-list" outlined class="w-full mt-6" as="router-link" to="/risks/flood" />
             </div>
         </div>
     </div>
