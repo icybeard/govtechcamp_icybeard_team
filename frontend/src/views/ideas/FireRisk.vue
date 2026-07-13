@@ -1,65 +1,150 @@
 <script setup>
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
-import { ref } from 'vue';
+import { api } from '@/service/api';
+import { gibsOverlays } from '@/service/gibs';
+import { degToCompass, fetchRegionWeather, fetchWindGrid } from '@/service/weather';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
-// Демо-скоры пожарного риска (0–100) — заменить на реальные данные NASA FIRMS + ERA5
-// из API (module = 'fire-risk').
-const demoScores = ref({
-    'KZ-VOS': 84,
-    'KZ-PAV': 76,
-    'KZ-KAR': 71,
-    'KZ-AKM': 58,
-    'KZ-KUS': 52,
-    'KZ-ALM': 47,
-    'KZ-ZHA': 41,
-    'KZ-SEV': 35,
-    'KZ-AKT': 28,
-    'KZ-ZAP': 24,
-    'KZ-KZY': 19,
-    'KZ-YUZ': 16,
-    'KZ-ATY': 9,
-    'KZ-MAN': 4
-});
+/**
+ * Ситуационная live-карта пожаров: метео-индекс по областям (Open-Meteo, сейчас),
+ * очаги NASA FIRMS за 24 ч, стрелки ветра, спутниковые слои GIBS.
+ * Автообновление каждые 15 минут (совпадает с кэшем FIRMS-прокси).
+ * Индекс — прозрачная формула (не ML): temp/35·25 + (100−RH)/100·35 + wind/40·20 + dryDays/7·20.
+ */
+const REFRESH_MS = 15 * 60 * 1000;
+// Районы (ADM2, 174 шт.) вместо областей — детальнее для патрулей
+const GEO_URL = '/geo/kz-districts.geojson';
 
+const loading = ref(true);
+const error = ref(null);
+const regionWeather = ref({});
+const hotspots = ref([]);
+const hotspotsError = ref(null);
 const selected = ref(null);
+const updatedAt = ref(null);
+const windGrid = ref(null);
+
+const tileOverlays = gibsOverlays();
+
+const indexValues = computed(() => Object.fromEntries(Object.entries(regionWeather.value).map(([iso, w]) => [iso, w.index])));
+
+// стрелки по 174 районам были бы кашей — ветер показывает анимация частиц
+const markers = computed(() =>
+    hotspots.value.map((h) => ({
+        lat: h.lat,
+        lon: h.lon,
+        html: '<span style="font-size:14px">🔥</span>',
+        tooltip: `Очаг ${h.date} ${String(h.time).padStart(4, '0')} UTC · мощность ${h.frp} МВт (${h.satellite})`
+    }))
+);
+
+function clamp01(x) {
+    return Math.max(0, Math.min(1, x));
+}
+
+function computeIndex(w) {
+    const parts = [
+        { name: `Температура ${w.temp} °C`, value: Math.round(25 * clamp01(w.temp / 35)) },
+        { name: `Сухость воздуха (влажность ${w.humidity} %)`, value: Math.round(35 * clamp01((100 - w.humidity) / 100)) },
+        { name: `Ветер ${w.windSpeed} км/ч`, value: Math.round(20 * clamp01(w.windSpeed / 40)) },
+        { name: `Дней без осадков: ${w.dryDays} из 7`, value: Math.round(20 * clamp01(w.dryDays / 7)) }
+    ];
+    return { index: parts.reduce((s, p) => s + p.value, 0), parts };
+}
+
+async function refresh() {
+    try {
+        const { updatedAt: at, regions } = await fetchRegionWeather(GEO_URL);
+        for (const w of Object.values(regions)) Object.assign(w, computeIndex(w));
+        regionWeather.value = regions;
+        updatedAt.value = at;
+        error.value = null;
+    } catch (e) {
+        error.value = `Open-Meteo недоступен: ${e.message}`;
+    }
+    try {
+        hotspots.value = await api.get('/fire/hotspots');
+        hotspotsError.value = null;
+    } catch (e) {
+        hotspotsError.value = e.message;
+    } finally {
+        loading.value = false;
+    }
+    try {
+        windGrid.value = await fetchWindGrid(); // анимация частиц ветра
+    } catch {
+        windGrid.value = null;
+    }
+}
+
+let timer = null;
+onMounted(() => {
+    refresh();
+    timer = setInterval(refresh, REFRESH_MS);
+});
+onBeforeUnmount(() => clearInterval(timer));
+
+function onRegionClick(region) {
+    selected.value = regionWeather.value[region.iso] ?? null;
+}
 </script>
 
 <template>
     <div class="grid grid-cols-12 gap-6">
         <div class="col-span-12">
             <div class="card mb-0">
-                <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
                     <div>
-                        <h4 class="m-0">И-9. Степные/лесные пожары</h4>
-                        <span class="text-muted-color">Риск-карта и раннее оповещение. Данные: NASA FIRMS (очаги), ERA5 (метео).</span>
+                        <h4 class="m-0">И-9. Пожарная обстановка — live</h4>
+                        <span class="text-muted-color">Метео-индекс по районам (Open-Meteo, сейчас) + очаги NASA FIRMS за 24 ч + слои GIBS. Обновление каждые 15 минут.</span>
                     </div>
-                    <Tag value="демо-данные" severity="warn" />
+                    <div class="flex items-center gap-3">
+                        <Tag v-if="updatedAt" :value="`обновлено ${updatedAt}`" severity="success" />
+                        <Tag v-if="hotspots.length" :value="`очагов за 24 ч: ${hotspots.length}`" severity="danger" />
+                        <Tag v-else-if="!hotspotsError" value="очагов нет" severity="success" />
+                    </div>
                 </div>
+                <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
+                <Message v-if="hotspotsError" severity="warn" :closable="false">Очаги FIRMS: {{ hotspotsError }}</Message>
             </div>
         </div>
 
-        <div class="col-span-12 lg:col-span-8">
+        <div class="col-span-12">
             <div class="card mb-0">
-                <KazakhstanMap :values="demoScores" legend-title="Риск пожара" @region-click="selected = $event" />
-            </div>
-        </div>
+                <div class="relative">
+                    <KazakhstanMap height="72vh" :geo-url="GEO_URL" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="windGrid" legend-title="Метео-индекс" @region-click="onRegionClick" />
 
-        <div class="col-span-12 lg:col-span-4">
-            <div class="card mb-0 h-full">
-                <h5>Регион</h5>
-                <template v-if="selected">
+                    <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
+                        <Tag value="Кликните район — разбор метео-индекса" severity="secondary" />
+                    </div>
+                    <div v-else class="card m-0 shadow-lg" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000; width: 340px; max-width: 85%; max-height: calc(100% - 2rem); overflow-y: auto">
+                        <div class="flex items-start justify-between mb-2">
+                            <h5 class="m-0">Район</h5>
+                            <Button icon="pi pi-times" text rounded size="small" @click="selected = null" />
+                        </div>
                     <div class="text-2xl font-medium mb-2">{{ selected.name }}</div>
                     <div class="mb-4">
-                        Скор риска: <Tag :value="selected.value ?? '—'" :severity="selected.value > 60 ? 'danger' : selected.value > 30 ? 'warn' : 'success'" />
+                        Метео-индекс:
+                        <Tag :value="selected.index + ' / 100'" :severity="selected.index > 60 ? 'danger' : selected.index > 35 ? 'warn' : 'success'" />
                     </div>
-                    <h6>Очередь патрулей (заглушка)</h6>
-                    <ul class="list-disc pl-6 leading-loose">
-                        <li>Патрулирование участков с сухостоем</li>
-                        <li>Проверка минерализованных полос</li>
-                        <li>Оповещение сельских акиматов</li>
+
+                    <h6>Из чего складывается</h6>
+                    <ul class="list-none p-0 m-0 flex flex-col gap-2 mb-4">
+                        <li v-for="p in selected.parts" :key="p.name" class="flex items-center justify-between gap-3">
+                            <span>{{ p.name }}</span>
+                            <Tag :value="'+' + p.value" :severity="p.value >= 15 ? 'danger' : p.value >= 8 ? 'warn' : 'secondary'" />
+                        </li>
                     </ul>
-                </template>
-                <p v-else class="text-muted-color">Кликните регион на карте, чтобы увидеть детали и очередь патрулей.</p>
+
+                        <ul class="list-none p-0 m-0 flex flex-col gap-2 text-muted-color">
+                            <li>Ветер: {{ selected.windSpeed }} км/ч, {{ degToCompass(selected.windDir) }}</li>
+                            <li>Осадки: вчера {{ selected.precip24h }} мм, за 7 дней {{ selected.precip7d }} мм</li>
+                        </ul>
+                        <p class="text-muted-color mt-3 mb-0 text-sm">
+                            Метео-индекс — прозрачный baseline; ML-прогноз по ячейкам 10×10 км — в docs/ideas/i9-fire-risk/.
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

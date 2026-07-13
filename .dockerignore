@@ -1,0 +1,12 @@
+# Контекст api-образа — корень репозитория: не тащим лишнее в docker daemon
+.git/
+frontend/node_modules/
+frontend/dist/
+.venv/
+backend/src/Api/bin/
+backend/src/Api/obj/
+data/raw/era5*
+data/raw/era5_kz-sev/
+docs/
+ml/
+scripts/

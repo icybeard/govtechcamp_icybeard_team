@@ -18,7 +18,8 @@ var envOverrides = new Dictionary<string, string?>
 {
     ["Jwt:Key"] = FromEnv("JWT_KEY"),
     ["Seed:AdminEmail"] = FromEnv("SEED_ADMIN_EMAIL"),
-    ["Seed:AdminPassword"] = FromEnv("SEED_ADMIN_PASSWORD")
+    ["Seed:AdminPassword"] = FromEnv("SEED_ADMIN_PASSWORD"),
+    ["Firms:MapKey"] = FromEnv("FIRMS_MAP_KEY")
 };
 builder.Configuration.AddInMemoryCollection(
     envOverrides.Where(kv => !string.IsNullOrWhiteSpace(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value));
@@ -27,6 +28,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
 builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddHttpClient();
 
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("Jwt:Key is not configured (env JWT__KEY or appsettings)");
@@ -67,6 +69,7 @@ using (var scope = app.Services.CreateScope())
     {
         await db.Database.MigrateAsync();
         await DbSeeder.SeedAsync(db, app.Configuration);
+        await DataFileSeeder.SeedAsync(db, app.Logger);
     }
     catch (Exception ex)
     {
@@ -88,5 +91,8 @@ app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
 app.MapRegionEndpoints();
+app.MapSettlementEndpoints();
+app.MapMeasureEndpoints();
+app.MapFireEndpoints();
 
 app.Run();

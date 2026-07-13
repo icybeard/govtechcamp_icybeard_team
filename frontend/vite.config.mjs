@@ -9,7 +9,9 @@ import { defineConfig } from 'vite';
 // https://vitejs.dev/config/
 export default defineConfig({
     optimizeDeps: {
-        noDiscovery: true
+        noDiscovery: true,
+        // CJS-зависимости нужно пре-бандлить явно, иначе dev-сервер падает на import default
+        include: ['leaflet', 'chart.js', 'leaflet-velocity']
     },
     plugins: [
         vue(),

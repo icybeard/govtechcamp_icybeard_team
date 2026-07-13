@@ -22,6 +22,63 @@ namespace GovTech.Api.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("GovTech.Api.Data.PreventiveMeasure", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("DecidedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Module")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<double>("Priority")
+                        .HasColumnType("double precision");
+
+                    b.Property<int>("SettlementId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SettlementId");
+
+                    b.HasIndex("Module", "Status");
+
+                    b.ToTable("PreventiveMeasures");
+                });
+
             modelBuilder.Entity("GovTech.Api.Data.Region", b =>
                 {
                     b.Property<int>("Id")
@@ -93,6 +150,85 @@ namespace GovTech.Api.Data.Migrations
                     b.ToTable("RegionMetrics");
                 });
 
+            modelBuilder.Entity("GovTech.Api.Data.Settlement", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("KatoCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<double>("Lat")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("Lon")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<int?>("Population")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RegionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RegionId", "Name");
+
+                    b.ToTable("Settlements");
+                });
+
+            modelBuilder.Entity("GovTech.Api.Data.SettlementMetric", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("FactorsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("MetricKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Module")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Period")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("SettlementId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double>("Value")
+                        .HasColumnType("double precision");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SettlementId", "Module", "MetricKey", "Period")
+                        .IsUnique();
+
+                    b.ToTable("SettlementMetrics");
+                });
+
             modelBuilder.Entity("GovTech.Api.Data.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -129,6 +265,17 @@ namespace GovTech.Api.Data.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("GovTech.Api.Data.PreventiveMeasure", b =>
+                {
+                    b.HasOne("GovTech.Api.Data.Settlement", "Settlement")
+                        .WithMany()
+                        .HasForeignKey("SettlementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Settlement");
+                });
+
             modelBuilder.Entity("GovTech.Api.Data.RegionMetric", b =>
                 {
                     b.HasOne("GovTech.Api.Data.Region", "Region")
@@ -140,7 +287,34 @@ namespace GovTech.Api.Data.Migrations
                     b.Navigation("Region");
                 });
 
+            modelBuilder.Entity("GovTech.Api.Data.Settlement", b =>
+                {
+                    b.HasOne("GovTech.Api.Data.Region", "Region")
+                        .WithMany()
+                        .HasForeignKey("RegionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Region");
+                });
+
+            modelBuilder.Entity("GovTech.Api.Data.SettlementMetric", b =>
+                {
+                    b.HasOne("GovTech.Api.Data.Settlement", "Settlement")
+                        .WithMany("Metrics")
+                        .HasForeignKey("SettlementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Settlement");
+                });
+
             modelBuilder.Entity("GovTech.Api.Data.Region", b =>
+                {
+                    b.Navigation("Metrics");
+                });
+
+            modelBuilder.Entity("GovTech.Api.Data.Settlement", b =>
                 {
                     b.Navigation("Metrics");
                 });

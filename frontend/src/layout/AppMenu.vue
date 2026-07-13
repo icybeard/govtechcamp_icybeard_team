@@ -42,61 +42,6 @@ const model = ref([
                 to: '/account/settings'
             }
         ]
-    },
-    {
-        label: 'Справочник (Sakai UI Kit)',
-        items: [
-            {
-                label: 'Form Layout',
-                icon: 'pi pi-fw pi-id-card',
-                to: '/uikit/formlayout'
-            },
-            {
-                label: 'Input',
-                icon: 'pi pi-fw pi-check-square',
-                to: '/uikit/input'
-            },
-            {
-                label: 'Button',
-                icon: 'pi pi-fw pi-mobile',
-                to: '/uikit/button'
-            },
-            {
-                label: 'Table',
-                icon: 'pi pi-fw pi-table',
-                to: '/uikit/table'
-            },
-            {
-                label: 'List',
-                icon: 'pi pi-fw pi-list',
-                to: '/uikit/list'
-            },
-            {
-                label: 'Tree',
-                icon: 'pi pi-fw pi-share-alt',
-                to: '/uikit/tree'
-            },
-            {
-                label: 'Panel',
-                icon: 'pi pi-fw pi-tablet',
-                to: '/uikit/panel'
-            },
-            {
-                label: 'Overlay',
-                icon: 'pi pi-fw pi-clone',
-                to: '/uikit/overlay'
-            },
-            {
-                label: 'Chart',
-                icon: 'pi pi-fw pi-chart-bar',
-                to: '/uikit/charts'
-            },
-            {
-                label: 'CRUD',
-                icon: 'pi pi-fw pi-pencil',
-                to: '/pages/crud'
-            }
-        ]
     }
 ]);
 </script>

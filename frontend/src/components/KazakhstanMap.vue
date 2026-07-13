@@ -1,6 +1,7 @@
 <script setup>
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet-velocity';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 /**
@@ -12,15 +13,28 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
  */
 const props = defineProps({
     values: { type: Object, default: () => ({}) },
+    // Точки НП: [{ id, name, lat, lon, value }] — рисуются кружками поверх областей
+    points: { type: Array, default: () => [] },
+    // Произвольные маркеры: [{ lat, lon, html, tooltip }] — div-иконки (стрелки ветра, очаги)
+    markers: { type: Array, default: () => [] },
+    // Спутниковые слои-подложки: [{ name, url, opacity, maxNativeZoom, attribution }] — переключатель Leaflet
+    tileOverlays: { type: Array, default: () => [] },
+    // Сетка ветра [uRecord, vRecord] (формат leaflet-velocity) — анимированные частицы
+    windGrid: { type: Array, default: null },
+    // GeoJSON административных границ (области по умолчанию; /geo/kz-districts.geojson — районы)
+    geoUrl: { type: String, default: '/geo/kz-regions.geojson' },
     legendTitle: { type: String, default: 'Значение' },
     height: { type: String, default: '520px' }
 });
 
-const emit = defineEmits(['region-click', 'region-hover']);
+const emit = defineEmits(['region-click', 'region-hover', 'point-click']);
 
 const container = ref(null);
 let map = null;
 let geoLayer = null;
+let pointsLayer = null;
+let markersLayer = null;
+let velocityLayer = null;
 let legend = null;
 
 const PALETTE = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15'];
@@ -33,13 +47,75 @@ function colorFor(value, min, max) {
 }
 
 function valueRange() {
-    const nums = Object.values(props.values).filter((v) => typeof v === 'number');
+    const nums = [...Object.values(props.values), ...props.points.map((p) => p.value)].filter((v) => typeof v === 'number');
     if (nums.length === 0) return null;
     return { min: Math.min(...nums), max: Math.max(...nums) };
 }
 
+function renderPoints() {
+    if (pointsLayer) pointsLayer.remove();
+    if (props.points.length === 0) return;
+    const range = valueRange();
+    pointsLayer = L.layerGroup(
+        props.points.map((p) => {
+            const marker = L.circleMarker([p.lat, p.lon], {
+                radius: 6,
+                weight: 1,
+                color: '#334155',
+                fillOpacity: 0.9,
+                fillColor: range ? colorFor(p.value, range.min, range.max) : '#64748b'
+            });
+            marker.bindTooltip(`<strong>${p.name}</strong><br/>${props.legendTitle}: ${p.value ?? '—'}`);
+            marker.on('click', () => emit('point-click', p));
+            return marker;
+        })
+    ).addTo(map);
+    const bounds = L.latLngBounds(props.points.map((p) => [p.lat, p.lon]));
+    map.fitBounds(bounds, { padding: [30, 30] });
+}
+
+function renderWind() {
+    if (velocityLayer) {
+        velocityLayer.remove();
+        velocityLayer = null;
+    }
+    if (!props.windGrid) return;
+    velocityLayer = L.velocityLayer({
+        data: props.windGrid,
+        maxVelocity: 15,
+        velocityScale: 0.01,
+        lineWidth: 2.5,
+        particleMultiplier: 1 / 180,
+        particleAge: 90,
+        opacity: 0.97,
+        // тёмно-синяя шкала — читается и на светлой подложке, и на красном хороплете
+        colorScale: ['#1e3a8a', '#1d4ed8', '#2563eb', '#3b82f6'],
+        displayValues: false
+    }).addTo(map);
+}
+
+function renderMarkers() {
+    if (markersLayer) markersLayer.remove();
+    if (props.markers.length === 0) return;
+    markersLayer = L.layerGroup(
+        props.markers.map((m) => {
+            const marker = L.marker([m.lat, m.lon], {
+                icon: L.divIcon({ className: 'kz-map-divicon', html: m.html, iconSize: [24, 24], iconAnchor: [12, 12] }),
+                interactive: Boolean(m.tooltip)
+            });
+            if (m.tooltip) marker.bindTooltip(m.tooltip);
+            return marker;
+        })
+    ).addTo(map);
+}
+
+// у ADM1 ключ — shapeISO, у ADM2 (районы) ISO пуст — используем shapeID
+function featureKey(feature) {
+    return feature.properties.shapeISO || feature.properties.shapeID;
+}
+
 function styleFeature(feature) {
-    const iso = feature.properties.shapeISO;
+    const iso = featureKey(feature);
     const range = valueRange();
     return {
         weight: 1,
@@ -51,9 +127,9 @@ function styleFeature(feature) {
 
 function regionPayload(feature) {
     return {
-        iso: feature.properties.shapeISO,
+        iso: featureKey(feature),
         name: feature.properties.shapeName,
-        value: props.values[feature.properties.shapeISO] ?? null
+        value: props.values[featureKey(feature)] ?? null
     };
 }
 
@@ -101,10 +177,26 @@ async function initMap() {
     }).addTo(map);
     L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap, geoBoundaries').addTo(map);
 
-    const response = await fetch('/geo/kz-regions.geojson');
+    if (props.tileOverlays.length) {
+        // отдельная панель выше хороплета (overlayPane z=400), ниже маркеров (600):
+        // иначе осадки/снимок «ныряют» под заливку рисков
+        map.createPane('weatherTiles').style.zIndex = 450;
+        const overlays = Object.fromEntries(
+            props.tileOverlays.map((t) => [
+                t.name,
+                L.tileLayer(t.url, { pane: 'weatherTiles', opacity: t.opacity ?? 1, maxNativeZoom: t.maxNativeZoom, maxZoom: 12, attribution: t.attribution })
+            ])
+        );
+        L.control.layers(null, overlays, { position: 'topleft', collapsed: true }).addTo(map);
+    }
+
+    const response = await fetch(props.geoUrl);
     const geojson = await response.json();
     geoLayer = L.geoJSON(geojson, { style: styleFeature, onEachFeature }).addTo(map);
     map.fitBounds(geoLayer.getBounds(), { padding: [10, 10] });
+    renderPoints();
+    renderMarkers();
+    renderWind();
     renderLegend();
 }
 
@@ -117,6 +209,32 @@ watch(
         }
     },
     { deep: true }
+);
+
+watch(
+    () => props.points,
+    () => {
+        if (map) {
+            renderPoints();
+            renderLegend();
+        }
+    },
+    { deep: true }
+);
+
+watch(
+    () => props.markers,
+    () => {
+        if (map) renderMarkers();
+    },
+    { deep: true }
+);
+
+watch(
+    () => props.windGrid,
+    () => {
+        if (map) renderWind();
+    }
 );
 
 onMounted(initMap);
@@ -143,6 +261,14 @@ onBeforeUnmount(() => map?.remove());
 .kz-map-legend-title {
     font-weight: 600;
     margin-bottom: 0.25rem;
+}
+.kz-map-divicon {
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
 }
 .kz-map-legend i {
     display: inline-block;
