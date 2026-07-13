@@ -21,7 +21,8 @@ const measureCounts = computed(() => {
 onMounted(async () => {
     try {
         const [scoreRows, measureRows] = await Promise.all([
-            api.get(`/settlements/metrics/${MODULE}?metricKey=risk_score`),
+            // period обязателен: без него API вернёт все сезоны сразу (520×18 строк)
+            api.get(`/settlements/metrics/${MODULE}?metricKey=risk_score&period=2024`),
             api.get(`/measures/?module=${MODULE}`)
         ]);
         scores.value = scoreRows;
