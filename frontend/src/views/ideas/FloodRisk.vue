@@ -2,6 +2,7 @@
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
 import { api } from '@/service/api';
 import { isAdmin } from '@/service/auth';
+import { findDistrict, loadDistricts } from '@/service/geo';
 import { gibsOverlays } from '@/service/gibs';
 import { degToCompass, fetchRegionWeather, fetchWindGrid, windMarkers } from '@/service/weather';
 import { useToast } from 'primevue/usetoast';
@@ -25,8 +26,30 @@ const toast = useToast();
 const loading = ref(true);
 const error = ref(null);
 const points = ref([]);
-const regionValues = ref({});
 const selected = ref(null);
+
+// Хороплет районов: скор района = максимум по его сёлам (везде районы, как на пожарах).
+// Привязка село→район считается один раз (point-in-polygon), сезоны меняют только значения.
+const GEO_URL = '/geo/kz-districts.geojson';
+const districtBySettlement = ref({}); // settlementId -> shapeID
+const districtValues = computed(() => {
+    const acc = {};
+    for (const p of points.value) {
+        const districtId = districtBySettlement.value[p.id];
+        if (!districtId) continue;
+        acc[districtId] = Math.max(acc[districtId] ?? 0, p.value);
+    }
+    return acc;
+});
+
+async function assignDistricts() {
+    const districts = await loadDistricts();
+    const assignments = {};
+    for (const p of points.value) {
+        assignments[p.id] = findDistrict(p.lat, p.lon, districts)?.id ?? null;
+    }
+    districtBySettlement.value = assignments;
+}
 const measures = ref([]);
 const generating = ref(false);
 
@@ -86,17 +109,16 @@ async function loadSeasonScores() {
 }
 
 async function loadAll() {
-    const [settlementScores, regionScores, measureList, summary] = await Promise.all([
+    const [settlementScores, measureList, summary] = await Promise.all([
         api.get(`/settlements/metrics/${MODULE}?metricKey=risk_score&period=${CURRENT_SEASON}`),
-        api.get(`/regions/metrics/${MODULE}?metricKey=risk_score`),
         api.get(`/measures/?module=${MODULE}`),
         fetch('/data/season-summary.json').then((r) => (r.ok ? r.json() : []))
     ]);
     points.value = settlementScores.map(toPoint);
     base2024Scores.value = Object.fromEntries(settlementScores.map((s) => [s.settlementId, Math.round(s.value)]));
-    regionValues.value = regionScores;
     measures.value = measureList;
     seasonSummary.value = summary;
+    await assignDistricts();
 }
 
 let weatherTimer = null;
@@ -192,7 +214,7 @@ async function setStatus(measure, status) {
         <div class="col-span-12">
             <div class="card mb-0">
                 <div class="relative">
-                    <KazakhstanMap height="72vh" :values="regionValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" legend-title="Риск паводка" @point-click="selected = $event" @region-click="selected = null" />
+                    <KazakhstanMap height="72vh" :geo-url="GEO_URL" :values="districtValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" legend-title="Риск паводка" @point-click="selected = $event" @region-click="selected = null" />
 
                     <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
                         <Tag value="Кликните НП — скор, факторы «почему» и меры" severity="secondary" />

@@ -23,10 +23,22 @@ const hotspotsError = ref(null);
 const selected = ref(null);
 const updatedAt = ref(null);
 const windGrid = ref(null);
+// Историческая частота очагов июля 2021–2025 по районам (scripts/fire_history.py):
+// data-driven приор, смешивается с live-метео-индексом 50/50
+const fireHistory = ref({});
 
 const tileOverlays = gibsOverlays();
 
-const indexValues = computed(() => Object.fromEntries(Object.entries(regionWeather.value).map(([iso, w]) => [iso, w.index])));
+// Итоговый риск района = 0.5·метео-сейчас + 0.5·историческая частота (если история загружена)
+const hasHistory = computed(() => Object.keys(fireHistory.value).length > 0);
+const indexValues = computed(() =>
+    Object.fromEntries(
+        Object.entries(regionWeather.value).map(([iso, w]) => {
+            const prior = fireHistory.value[iso]?.prior;
+            return [iso, prior === undefined ? w.index : Math.round(0.5 * w.index + 0.5 * prior)];
+        })
+    )
+);
 
 // стрелки по 174 районам были бы кашей — ветер показывает анимация частиц
 const markers = computed(() =>
@@ -78,14 +90,26 @@ async function refresh() {
 }
 
 let timer = null;
-onMounted(() => {
+onMounted(async () => {
+    try {
+        const response = await fetch('/data/fire-history.json');
+        if (response.ok) fireHistory.value = await response.json();
+    } catch {
+        /* без истории работаем на чистом метео-индексе */
+    }
     refresh();
     timer = setInterval(refresh, REFRESH_MS);
 });
 onBeforeUnmount(() => clearInterval(timer));
 
 function onRegionClick(region) {
-    selected.value = regionWeather.value[region.iso] ?? null;
+    const w = regionWeather.value[region.iso];
+    if (!w) {
+        selected.value = null;
+        return;
+    }
+    const history = fireHistory.value[region.iso];
+    selected.value = { ...w, combined: indexValues.value[region.iso], history };
 }
 </script>
 
@@ -96,7 +120,7 @@ function onRegionClick(region) {
                 <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
                     <div>
                         <h4 class="m-0">Пожарная обстановка — live</h4>
-                        <span class="text-muted-color">Метео-индекс по районам (Open-Meteo, сейчас) + очаги NASA FIRMS за 24 ч + слои GIBS. Обновление каждые 15 минут.</span>
+                        <span class="text-muted-color">Риск по районам = live-метео (Open-Meteo) + историческая частота очагов (FIRMS, июль 2021–2025); очаги за 24 ч; слои GIBS. Обновление каждые 15 минут.</span>
                     </div>
                     <div class="flex items-center gap-3">
                         <Tag v-if="updatedAt" :value="`обновлено ${updatedAt}`" severity="success" />
@@ -112,7 +136,7 @@ function onRegionClick(region) {
         <div class="col-span-12">
             <div class="card mb-0">
                 <div class="relative">
-                    <KazakhstanMap height="72vh" :geo-url="GEO_URL" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="windGrid" legend-title="Метео-индекс" @region-click="onRegionClick" />
+                    <KazakhstanMap height="72vh" :geo-url="GEO_URL" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="windGrid" :legend-title="hasHistory ? 'Риск (метео+история)' : 'Метео-индекс'" @region-click="onRegionClick" />
 
                     <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
                         <Tag value="Кликните район — разбор метео-индекса" severity="secondary" />
@@ -122,26 +146,34 @@ function onRegionClick(region) {
                             <h5 class="m-0">Район</h5>
                             <Button icon="pi pi-times" text rounded size="small" @click="selected = null" />
                         </div>
-                    <div class="text-2xl font-medium mb-2">{{ selected.name }}</div>
-                    <div class="mb-4">
-                        Метео-индекс:
-                        <Tag :value="selected.index + ' / 100'" :severity="selected.index > 60 ? 'danger' : selected.index > 35 ? 'warn' : 'success'" />
-                    </div>
+                        <div class="text-2xl font-medium mb-2">{{ selected.name }}</div>
+                        <div class="mb-4 flex items-center gap-2 flex-wrap">
+                            Риск района:
+                            <Tag :value="selected.combined + ' / 100'" :severity="selected.combined > 60 ? 'danger' : selected.combined > 35 ? 'warn' : 'success'" />
+                        </div>
 
-                    <h6>Из чего складывается</h6>
-                    <ul class="list-none p-0 m-0 flex flex-col gap-2 mb-4">
-                        <li v-for="p in selected.parts" :key="p.name" class="flex items-center justify-between gap-3">
-                            <span>{{ p.name }}</span>
-                            <Tag :value="'+' + p.value" :severity="p.value >= 15 ? 'danger' : p.value >= 8 ? 'warn' : 'secondary'" />
-                        </li>
-                    </ul>
+                        <h6>Метео-индекс сейчас: {{ selected.index }}</h6>
+                        <ul class="list-none p-0 m-0 flex flex-col gap-2 mb-4">
+                            <li v-for="p in selected.parts" :key="p.name" class="flex items-center justify-between gap-3">
+                                <span>{{ p.name }}</span>
+                                <Tag :value="'+' + p.value" :severity="p.value >= 15 ? 'danger' : p.value >= 8 ? 'warn' : 'secondary'" />
+                            </li>
+                        </ul>
+
+                        <template v-if="selected.history">
+                            <h6>История (июль 2021–2025)</h6>
+                            <div class="flex items-center justify-between gap-3 mb-3">
+                                <span>Очагов за 5 июлей: {{ selected.history.count.toLocaleString('ru-RU') }}</span>
+                                <Tag :value="'приор ' + Math.round(selected.history.prior)" :severity="selected.history.prior > 60 ? 'danger' : selected.history.prior > 35 ? 'warn' : 'secondary'" />
+                            </div>
+                        </template>
 
                         <ul class="list-none p-0 m-0 flex flex-col gap-2 text-muted-color">
                             <li>Ветер: {{ selected.windSpeed }} км/ч, {{ degToCompass(selected.windDir) }}</li>
                             <li>Осадки: вчера {{ selected.precip24h }} мм, за 7 дней {{ selected.precip7d }} мм</li>
                         </ul>
                         <p class="text-muted-color mt-3 mb-0 text-sm">
-                            Метео-индекс — прозрачный baseline; ML-прогноз по ячейкам 10×10 км — следующий шаг платформы.
+                            {{ hasHistory ? 'Риск = 0.5·метео-сейчас + 0.5·историческая частота очагов (NASA FIRMS, лог-шкала).' : 'Метео-индекс — прозрачный baseline; история FIRMS не загружена.' }}
                         </p>
                     </div>
                 </div>
