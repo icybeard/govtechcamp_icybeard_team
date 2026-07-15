@@ -24,6 +24,11 @@ const router = createRouter({
                     name: 'fire-risk',
                     component: () => import('@/views/ideas/FireRisk.vue')
                 },
+                {
+                    path: '/risks/winter',
+                    name: 'winter-risk',
+                    component: () => import('@/views/ideas/WinterRisk.vue')
+                },
                 // старые пути — редирект, чтобы не ломать закладки
                 { path: '/ideas/flood-risk', redirect: '/risks/flood' },
                 { path: '/ideas/fire-risk', redirect: '/risks/fire' },

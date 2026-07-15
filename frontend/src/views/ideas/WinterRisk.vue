@@ -1,0 +1,132 @@
+<script setup>
+import KazakhstanMap from '@/components/KazakhstanMap.vue';
+import { api } from '@/service/api';
+import { computed, onMounted, ref, watch } from 'vue';
+
+// Зимняя обстановка ПО ОБЛАСТЯМ. Данные готовит scripts/winter_fetch.py (один раз) в
+// data/processed/winter_regions.csv; бэк (DataFileSeeder) сеет их в RegionMetric
+// (module=winter-risk) на старте. Страница ТОЛЬКО отображает: заливка по risk_score
+// + разбор по 4 под-индексам.
+const MODULE = 'winter-risk';
+const CURRENT = '2024';
+const BLUE = ['#eff3ff', '#bdd7e7', '#6baed6', '#3182bd', '#08519c']; // зимняя палитра
+
+const SUBS = [
+    { key: 'idx_glaze', label: 'Гололёд' },
+    { key: 'idx_blizzard', label: 'Метель/заносы' },
+    { key: 'idx_snowload', label: 'Снеговая нагрузка' },
+    { key: 'idx_cold', label: 'Холод' }
+];
+
+const season = ref(CURRENT);
+const seasonOptions = Array.from({ length: 7 }, (_, i) => String(2026 - i)).map((y) => ({
+    label: y === CURRENT ? '2024 (зима 2023–24)' : `зима ${+y - 1}–${y.slice(2)}`,
+    value: y
+}));
+
+const loading = ref(true);
+const error = ref(null);
+const regionValues = ref({}); // risk_score { iso: v }
+const subValues = ref({}); // { idx_glaze: { iso: v }, ... }
+const selected = ref(null);
+
+async function load() {
+    loading.value = true;
+    try {
+        const [main, ...subs] = await Promise.all([
+            api.get(`/regions/metrics/${MODULE}?metricKey=risk_score&period=${season.value}`),
+            ...SUBS.map((s) => api.get(`/regions/metrics/${MODULE}?metricKey=${s.key}&period=${season.value}`))
+        ]);
+        regionValues.value = main;
+        subValues.value = Object.fromEntries(SUBS.map((s, i) => [s.key, subs[i]]));
+        error.value = null;
+    } catch (e) {
+        regionValues.value = {};
+        subValues.value = {};
+        error.value = e.message;
+    }
+    selected.value = null;
+    loading.value = false;
+}
+
+onMounted(load);
+watch(season, load);
+
+const hasData = computed(() => Object.keys(regionValues.value).length > 0);
+
+function sev(v) {
+    return v > 60 ? 'danger' : v > 35 ? 'warn' : 'success';
+}
+
+function onRegionClick(region) {
+    if (region.value == null) {
+        selected.value = null;
+        return;
+    }
+    selected.value = {
+        name: region.name,
+        value: Math.round(region.value),
+        parts: SUBS.map((s) => ({ label: s.label, value: Math.round(subValues.value[s.key]?.[region.iso] ?? 0) }))
+    };
+}
+</script>
+
+<template>
+    <div class="grid grid-cols-12 gap-6">
+        <div class="col-span-12">
+            <div class="card mb-0">
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                    <div>
+                        <h4 class="m-0">Зимняя обстановка — риск-скоринг по областям</h4>
+                        <span class="text-muted-color">Индекс зимней опасности 0–100 по областям (гололёд, метель, снегонагрузка, холод), ERA5. Данные грузятся на старте, страница отображает.</span>
+                    </div>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <div class="flex items-center gap-2">
+                            <label for="seasonSelect" class="text-muted-color">Сезон</label>
+                            <Select v-model="season" inputId="seasonSelect" :options="seasonOptions" optionLabel="label" optionValue="value" size="small" />
+                        </div>
+                        <Tag v-if="loading" value="загрузка…" severity="secondary" />
+                        <Tag v-else-if="hasData" :value="`областей: ${Object.keys(regionValues).length}`" severity="success" />
+                        <Tag v-else value="данные не загружены" severity="warn" />
+                    </div>
+                </div>
+                <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
+                <Message v-else-if="!loading && !hasData" severity="info" :closable="false">
+                    Данные не загружены. Сделай файл <code>data/processed/winter_regions.csv</code> (один раз: <code>python scripts/winter_fetch.py</code>), затем пересоздай базу: <code>docker compose down -v &amp;&amp; docker compose up --build</code> — бэк засеет зиму на старте пакетом, как паводок.
+                </Message>
+            </div>
+        </div>
+
+        <div class="col-span-12">
+            <div class="card mb-0">
+                <div class="relative">
+                    <KazakhstanMap height="72vh" :values="regionValues" :palette="BLUE" :domain-min="0" :domain-max="100" legend-title="Индекс зимней опасности" @region-click="onRegionClick" />
+
+                    <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
+                        <Tag value="Кликните область — скор и разбор по факторам" severity="secondary" />
+                    </div>
+                    <div v-else class="card m-0 shadow-lg" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000; width: 330px; max-width: 85%">
+                        <div class="flex items-start justify-between mb-2">
+                            <h5 class="m-0">Область</h5>
+                            <Button icon="pi pi-times" text rounded size="small" @click="selected = null" />
+                        </div>
+                        <div class="text-2xl font-medium mb-2">{{ selected.name }}</div>
+                        <div class="mb-4">
+                            Индекс зимней опасности ({{ season }}):
+                            <Tag :value="selected.value + ' / 100'" :severity="sev(selected.value)" />
+                        </div>
+
+                        <h6>Из чего складывается (0–100 по каждому)</h6>
+                        <ul class="list-none p-0 m-0 flex flex-col gap-2 mb-3">
+                            <li v-for="p in selected.parts" :key="p.label" class="flex items-center justify-between gap-3">
+                                <span>{{ p.label }}</span>
+                                <Tag :value="p.value" :severity="sev(p.value)" />
+                            </li>
+                        </ul>
+                        <p class="text-muted-color mb-0 text-sm">Итог — взвешенный композит: гололёд 0.30 + метель 0.30 + снегонагрузка 0.20 + холод 0.20.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>

@@ -24,6 +24,11 @@ const props = defineProps({
     // GeoJSON административных границ (области по умолчанию; /geo/kz-districts.geojson — районы)
     geoUrl: { type: String, default: '/geo/kz-regions.geojson' },
     legendTitle: { type: String, default: 'Значение' },
+    // Палитра хороплета (светлый→тёмный). По умолчанию красная; зима передаёт синюю.
+    palette: { type: Array, default: () => ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15'] },
+    // Фиксированный диапазон шкалы (напр. 0 и 100). null → авто по данным.
+    domainMin: { type: Number, default: null },
+    domainMax: { type: Number, default: null },
     height: { type: String, default: '520px' }
 });
 
@@ -37,16 +42,15 @@ let markersLayer = null;
 let velocityLayer = null;
 let legend = null;
 
-const PALETTE = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15'];
-
 function colorFor(value, min, max) {
     if (value === undefined || value === null) return '#cbd5e1';
-    if (max === min) return PALETTE[2];
+    if (max === min) return props.palette[2];
     const t = (value - min) / (max - min);
-    return PALETTE[Math.min(PALETTE.length - 1, Math.floor(t * PALETTE.length))];
+    return props.palette[Math.min(props.palette.length - 1, Math.floor(t * props.palette.length))];
 }
 
 function valueRange() {
+    if (props.domainMin !== null && props.domainMax !== null) return { min: props.domainMin, max: props.domainMax };
     const nums = [...Object.values(props.values), ...props.points.map((p) => p.value)].filter((v) => typeof v === 'number');
     if (nums.length === 0) return null;
     return { min: Math.min(...nums), max: Math.max(...nums) };
@@ -156,10 +160,10 @@ function renderLegend() {
     legend = L.control({ position: 'bottomright' });
     legend.onAdd = () => {
         const div = L.DomUtil.create('div', 'kz-map-legend');
-        const step = (range.max - range.min) / PALETTE.length;
+        const step = (range.max - range.min) / props.palette.length;
         div.innerHTML =
             `<div class="kz-map-legend-title">${props.legendTitle}</div>` +
-            PALETTE.map((c, i) => {
+            props.palette.map((c, i) => {
                 const from = (range.min + step * i).toFixed(0);
                 const to = (range.min + step * (i + 1)).toFixed(0);
                 return `<div><i style="background:${c}"></i>${from}–${to}</div>`;

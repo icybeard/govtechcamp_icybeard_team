@@ -12,5 +12,6 @@ WORKDIR /app
 COPY --from=build /app .
 COPY data/raw/settlements_kz-sev.csv seed-data/
 COPY data/processed/scores_*.csv seed-data/
+COPY data/processed/winter_regions.csv seed-data/
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "GovTech.Api.dll"]
