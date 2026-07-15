@@ -124,7 +124,7 @@ async function loadAll() {
 let weatherTimer = null;
 onMounted(async () => {
     refreshWeather();
-    weatherTimer = setInterval(refreshWeather, 15 * 60 * 1000);
+    weatherTimer = setInterval(refreshWeather, 60 * 60 * 1000); // раз в час — бережём лимит Open-Meteo
     try {
         await loadAll();
     } catch (e) {

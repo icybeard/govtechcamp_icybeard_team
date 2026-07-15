@@ -47,6 +47,10 @@ backend: .env
 frontend:
 	npm --prefix frontend run dev
 
+## make fire-today — ML-прогноз пожаров на сегодня (Open-Meteo; при 429 подождать сброса лимита)
+fire-today:
+	.venv/bin/python ml/i9-fire-risk/fire_ml.py today
+
 ## make build — проверить, что всё собирается локально
 build:
 	cd backend && dotnet build
