@@ -77,6 +77,43 @@ public static class DataFileSeeder
         }
         await db.SaveChangesAsync();
         logger.LogInformation("Seed: скоры из {Count} файлов (актуальные + сезоны)", scoreFiles.Count);
+
+        // Зимняя обстановка по областям: RegionMetric из winter_regions.csv (если файл есть).
+        // Пакетная загрузка при пустой БД — как скоры паводка, без внешних HTTP-запросов.
+        var winterCsv = Path.Combine(scoresDir, "winter_regions.csv");
+        if (File.Exists(winterCsv))
+        {
+            var regionsByIso = await db.Regions.ToDictionaryAsync(r => r.IsoCode);
+            var winterRows = ReadCsv(winterCsv).ToList();
+            if (winterRows.Count > 1)
+            {
+                var header = winterRows[0];
+                int Col(string name) => Array.IndexOf(header, name);
+                int isoCol = Col("iso"), seasonCol = Col("season");
+                string[] metricCols = { "risk_score", "idx_glaze", "idx_blizzard", "idx_snowload", "idx_cold" };
+                foreach (var row in winterRows.Skip(1))
+                {
+                    if (isoCol < 0 || seasonCol < 0 || row.Length <= seasonCol) continue;
+                    if (!regionsByIso.TryGetValue(row[isoCol].Trim(), out var reg)) continue;
+                    var winterPeriod = row[seasonCol].Trim();
+                    foreach (var mc in metricCols)
+                    {
+                        int c = Col(mc);
+                        if (c < 0 || c >= row.Length || string.IsNullOrWhiteSpace(row[c])) continue;
+                        db.RegionMetrics.Add(new RegionMetric
+                        {
+                            RegionId = reg.Id,
+                            Module = "winter-risk",
+                            MetricKey = mc,
+                            Period = winterPeriod,
+                            Value = double.Parse(row[c], CultureInfo.InvariantCulture)
+                        });
+                    }
+                }
+                await db.SaveChangesAsync();
+                logger.LogInformation("Seed: winter-risk — региональные метрики из {File}", Path.GetFileName(winterCsv));
+            }
+        }
     }
 
     private static (string? Settlements, string? ScoresDir) FindDataFiles()

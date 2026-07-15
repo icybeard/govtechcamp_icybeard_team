@@ -25,6 +25,11 @@ const model = ref([
                 label: 'Пожарная обстановка · live',
                 icon: 'pi pi-fw pi-sun',
                 to: '/risks/fire'
+            },
+            {
+                label: 'Зимняя обстановка',
+                icon: 'pi pi-fw pi-asterisk',
+                to: '/risks/winter'
             }
         ]
     },

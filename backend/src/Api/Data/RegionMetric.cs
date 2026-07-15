@@ -2,7 +2,7 @@ namespace GovTech.Api.Data;
 
 /// <summary>
 /// Обогащение карты: одно числовое значение метрики для региона.
-/// Module — код идеи ('flood-risk', 'fire-risk', 'poaching'), MetricKey — имя метрики
+/// Module — код идеи ('flood-risk', 'fire-risk'), MetricKey — имя метрики
 /// ('risk_score', 'incidents', ...), Period — опциональный срез ('2026-04').
 /// </summary>
 public class RegionMetric
