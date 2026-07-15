@@ -9,11 +9,16 @@ export async function loadDistricts() {
     districtsCache = geo.features.map((f) => {
         const polys = f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [f.geometry.coordinates];
         const rings = polys.map((p) => p[0]); // внешних колец достаточно
-        let latMin = 90, latMax = -90, lonMin = 180, lonMax = -180;
+        let latMin = 90,
+            latMax = -90,
+            lonMin = 180,
+            lonMax = -180;
         for (const ring of rings) {
             for (const [lon, lat] of ring) {
-                latMin = Math.min(latMin, lat); latMax = Math.max(latMax, lat);
-                lonMin = Math.min(lonMin, lon); lonMax = Math.max(lonMax, lon);
+                latMin = Math.min(latMin, lat);
+                latMax = Math.max(latMax, lat);
+                lonMin = Math.min(lonMin, lon);
+                lonMax = Math.max(lonMax, lon);
             }
         }
         return { id: f.properties.shapeID, name: f.properties.shapeName, bbox: [latMin, latMax, lonMin, lonMax], rings };

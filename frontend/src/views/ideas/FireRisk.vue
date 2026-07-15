@@ -26,12 +26,19 @@ const windGrid = ref(null);
 // Историческая частота очагов июля 2021–2025 по районам (scripts/fire_history.py):
 // data-driven приор, смешивается с live-метео-индексом 50/50
 const fireHistory = ref({});
+// ML-прогноз на сегодня (LightGBM, ml/i9-fire-risk/fire_ml.py today) — отдельный режим карты
+const mlToday = ref(null); // { generatedAt, values: {shapeID: 0-100} }
+const mode = ref('composite');
+const modeOptions = computed(() => [
+    { label: 'Композит', value: 'composite' },
+    { label: 'ML-прогноз', value: 'ml', disabled: !mlToday.value }
+]);
 
 const tileOverlays = gibsOverlays();
 
 // Итоговый риск района = 0.5·метео-сейчас + 0.5·историческая частота (если история загружена)
 const hasHistory = computed(() => Object.keys(fireHistory.value).length > 0);
-const indexValues = computed(() =>
+const compositeValues = computed(() =>
     Object.fromEntries(
         Object.entries(regionWeather.value).map(([iso, w]) => {
             const prior = fireHistory.value[iso]?.prior;
@@ -39,6 +46,8 @@ const indexValues = computed(() =>
         })
     )
 );
+const indexValues = computed(() => (mode.value === 'ml' && mlToday.value ? mlToday.value.values : compositeValues.value));
+const legendTitle = computed(() => (mode.value === 'ml' ? 'ML-прогноз (P×100)' : hasHistory.value ? 'Риск (метео+история)' : 'Метео-индекс'));
 
 // стрелки по 174 районам были бы кашей — ветер показывает анимация частиц
 const markers = computed(() =>
@@ -97,6 +106,12 @@ onMounted(async () => {
     } catch {
         /* без истории работаем на чистом метео-индексе */
     }
+    try {
+        const response = await fetch('/data/fire-ml-today.json');
+        if (response.ok) mlToday.value = await response.json();
+    } catch {
+        /* режим ML недоступен — селектор задизейблен */
+    }
     refresh();
     timer = setInterval(refresh, REFRESH_MS);
 });
@@ -109,7 +124,7 @@ function onRegionClick(region) {
         return;
     }
     const history = fireHistory.value[region.iso];
-    selected.value = { ...w, combined: indexValues.value[region.iso], history };
+    selected.value = { ...w, combined: compositeValues.value[region.iso], history, ml: mlToday.value?.values?.[region.iso] };
 }
 </script>
 
@@ -122,7 +137,9 @@ function onRegionClick(region) {
                         <h4 class="m-0">Пожарная обстановка — live</h4>
                         <span class="text-muted-color">Риск по районам = live-метео (Open-Meteo) + историческая частота очагов (FIRMS, июль 2021–2025); очаги за 24 ч; слои GIBS. Обновление каждые 15 минут.</span>
                     </div>
-                    <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <SelectButton v-model="mode" :options="modeOptions" optionLabel="label" optionValue="value" optionDisabled="disabled" size="small" />
+                        <Tag v-if="mode === 'ml' && mlToday" :value="`прогноз от ${mlToday.generatedAt.slice(11, 16)} UTC`" severity="info" />
                         <Tag v-if="updatedAt" :value="`обновлено ${updatedAt}`" severity="success" />
                         <Tag v-if="hotspots.length" :value="`очагов за 24 ч: ${hotspots.length}`" severity="danger" />
                         <Tag v-else-if="!hotspotsError" value="очагов нет" severity="success" />
@@ -136,7 +153,7 @@ function onRegionClick(region) {
         <div class="col-span-12">
             <div class="card mb-0">
                 <div class="relative">
-                    <KazakhstanMap height="72vh" :geo-url="GEO_URL" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="windGrid" :legend-title="hasHistory ? 'Риск (метео+история)' : 'Метео-индекс'" @region-click="onRegionClick" />
+                    <KazakhstanMap height="72vh" :geo-url="GEO_URL" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="windGrid" :legend-title="legendTitle" @region-click="onRegionClick" />
 
                     <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
                         <Tag value="Кликните район — разбор метео-индекса" severity="secondary" />
@@ -159,6 +176,11 @@ function onRegionClick(region) {
                                 <Tag :value="'+' + p.value" :severity="p.value >= 15 ? 'danger' : p.value >= 8 ? 'warn' : 'secondary'" />
                             </li>
                         </ul>
+
+                        <div v-if="selected.ml !== undefined" class="flex items-center justify-between gap-3 mb-3">
+                            <span>ML-прогноз на сегодня</span>
+                            <Tag :value="selected.ml + ' / 100'" :severity="selected.ml > 60 ? 'danger' : selected.ml > 35 ? 'warn' : 'success'" />
+                        </div>
 
                         <template v-if="selected.history">
                             <h6>История (июль 2021–2025)</h6>
