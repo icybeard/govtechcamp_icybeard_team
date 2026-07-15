@@ -1,6 +1,7 @@
 <script setup>
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
 import { api } from '@/service/api';
+import { gibsOverlays } from '@/service/gibs';
 import { computed, onMounted, ref, watch } from 'vue';
 
 // Зимняя обстановка ПО ОБЛАСТЯМ. Данные готовит scripts/winter_fetch.py (один раз) в
@@ -8,7 +9,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 // (module=winter-risk) на старте. Страница ТОЛЬКО отображает: заливка по risk_score
 // + разбор по 4 под-индексам.
 const MODULE = 'winter-risk';
-const CURRENT = '2024';
+const CURRENT = '2026'; // последняя завершённая зима 2025–26
 const BLUE = ['#eff3ff', '#bdd7e7', '#6baed6', '#3182bd', '#08519c']; // зимняя палитра
 
 const SUBS = [
@@ -20,9 +21,11 @@ const SUBS = [
 
 const season = ref(CURRENT);
 const seasonOptions = Array.from({ length: 7 }, (_, i) => String(2026 - i)).map((y) => ({
-    label: y === CURRENT ? '2024 (зима 2023–24)' : `зима ${+y - 1}–${y.slice(2)}`,
+    label: y === CURRENT ? `зима ${+y - 1}–${y.slice(2)} (последняя)` : `зима ${+y - 1}–${y.slice(2)}`,
     value: y
 }));
+
+const tileOverlays = gibsOverlays(); // снежный покров/снимок/осадки — те же слои, что и на других картах
 
 const loading = ref(true);
 const error = ref(null);
@@ -100,7 +103,7 @@ function onRegionClick(region) {
         <div class="col-span-12">
             <div class="card mb-0">
                 <div class="relative">
-                    <KazakhstanMap height="72vh" :values="regionValues" :palette="BLUE" :domain-min="0" :domain-max="100" legend-title="Индекс зимней опасности" @region-click="onRegionClick" />
+                    <KazakhstanMap height="72vh" :values="regionValues" :palette="BLUE" :domain-min="0" :domain-max="100" :tile-overlays="tileOverlays" legend-title="Индекс зимней опасности" @region-click="onRegionClick" />
 
                     <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
                         <Tag value="Кликните область — скор и разбор по факторам" severity="secondary" />
