@@ -54,7 +54,7 @@ const measures = ref([]);
 const generating = ref(false);
 
 // Live-погода поверх карты (Open-Meteo): скор — сезонный (снеготаяние),
-// live-слой показывает текущую обстановку. Автообновление раз в 15 минут.
+// live-слой показывает текущую обстановку. Автообновление раз в час.
 const liveWeather = ref(true);
 const regionWeather = ref({});
 const weatherUpdatedAt = ref(null);

@@ -8,7 +8,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 /**
  * Ситуационная live-карта пожаров: метео-индекс по областям (Open-Meteo, сейчас),
  * очаги NASA FIRMS за 24 ч, стрелки ветра, спутниковые слои GIBS.
- * Автообновление каждые 15 минут (совпадает с кэшем FIRMS-прокси).
+ * Автообновление раз в час (бережём суточный лимит Open-Meteo).
  * Индекс — прозрачная формула (не ML): temp/35·25 + (100−RH)/100·35 + wind/40·20 + dryDays/7·20.
  */
 // Раз в час: 174 района + сетка ветра ≈ 370 взвешенных запросов за обновление —
@@ -137,7 +137,7 @@ function onRegionClick(region) {
                 <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
                     <div>
                         <h4 class="m-0">Пожарная обстановка — live</h4>
-                        <span class="text-muted-color">Риск по районам = live-метео (Open-Meteo) + историческая частота очагов (FIRMS, июль 2021–2025); очаги за 24 ч; слои GIBS. Обновление каждые 15 минут.</span>
+                        <span class="text-muted-color">Риск по районам = live-метео (Open-Meteo) + историческая частота очагов (FIRMS, июль 2021–2025); очаги за 24 ч; слои GIBS. Обновление раз в час.</span>
                     </div>
                     <div class="flex items-center gap-3 flex-wrap">
                         <SelectButton v-model="mode" :options="modeOptions" optionLabel="label" optionValue="value" optionDisabled="disabled" size="small" />
