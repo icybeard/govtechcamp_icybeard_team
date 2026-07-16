@@ -7,9 +7,10 @@ import RiskHeaderCard from '@/components/risk/RiskHeaderCard.vue';
 import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
 import SeasonPicker from '@/components/risk/SeasonPicker.vue';
 import { RISK_HAZARDS } from '@/config/riskHazards';
-import { gibsOverlays } from '@/service/gibs';
+import LayersDatePicker from '@/components/risk/LayersDatePicker.vue';
+import { gibsOverlays, toIsoDate } from '@/service/gibs';
 import { riskSeverity } from '@/utils/riskScore';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 // Зимняя обстановка ПО РАЙОНАМ (ADM2, 174). Данные готовит scripts/winter_fetch_districts.py
 // (один раз) в frontend/public/data/winter-districts.json — страница читает статический файл,
@@ -36,9 +37,11 @@ const seasonOptions = Array.from({ length: 7 }, (_, i) => String(2026 - i)).map(
     value: y
 }));
 
-// Слои GIBS следуют выбранному сезону: середина февраля года Y — разгар зимы (Y-1)–Y,
-// снежный покров и снимок показывают именно ту зиму
-const tileOverlays = computed(() => gibsOverlays(`${season.value}-02-15`));
+// Слои GIBS следуют дате в пикере. Дефолт от сезона: середина февраля года Y —
+// разгар зимы (Y-1)–Y; смена сезона сбрасывает дату на его дефолт.
+const layerDate = ref(new Date(+season.value, 1, 15));
+watch(season, (y) => (layerDate.value = new Date(+y, 1, 15)));
+const tileOverlays = computed(() => gibsOverlays(toIsoDate(layerDate.value)));
 
 const loading = ref(true);
 const error = ref(null);
@@ -81,6 +84,7 @@ function onRegionClick(region) {
             <RiskHeaderCard title="Зимний риск-скоринг" description="Индекс зимней опасности 0–100 по 174 районам (гололёд, метель, снегонагрузка, холод), ERA5-архив.">
                 <template #controls>
                     <SeasonPicker v-model="season" :options="seasonOptions" />
+                    <LayersDatePicker v-model="layerDate" />
 
                     <Tag v-if="loading" value="загрузка…" severity="secondary" />
                     <Tag v-else-if="hasData" :value="`Районов со скорами: ${Object.keys(regionValues).length}`" severity="success" />

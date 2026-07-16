@@ -7,7 +7,8 @@ import RiskHeaderCard from '@/components/risk/RiskHeaderCard.vue';
 import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
 import { RISK_HAZARDS } from '@/config/riskHazards';
 import { api } from '@/service/api';
-import { gibsOverlays } from '@/service/gibs';
+import LayersDatePicker from '@/components/risk/LayersDatePicker.vue';
+import { gibsOverlays, toIsoDate } from '@/service/gibs';
 import { degToCompass, fetchRegionWeather, fetchWindGrid } from '@/service/weather';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
@@ -51,7 +52,13 @@ const modeOptions = computed(() => [
     { label: 'ML-прогноз', value: 'ml', disabled: !mlToday.value }
 ]);
 
-const tileOverlays = gibsOverlays();
+// Дата слоёв GIBS: дефолт «вчера» (live-режим — IMERG «последний срез»);
+// выбор другой даты в пикере переключает слои на архивный срез
+const layerDate = ref(new Date(Date.now() - 24 * 3600 * 1000));
+const tileOverlays = computed(() => {
+    const iso = toIsoDate(layerDate.value);
+    return iso === toIsoDate(new Date(Date.now() - 24 * 3600 * 1000)) ? gibsOverlays() : gibsOverlays(iso);
+});
 
 // Итоговый риск района = 0.5·метео-сейчас + 0.5·историческая частота (если история загружена)
 const hasHistory = computed(() => Object.keys(fireHistory.value).length > 0);
@@ -153,6 +160,7 @@ function onRegionClick(region) {
                 <template #controls>
                     <SelectButton v-model="mode" :options="modeOptions" optionLabel="label" optionValue="value" optionDisabled="disabled" size="small" />
                     <Tag v-if="mode === 'ml' && mlToday" :value="`прогноз от ${mlToday.generatedAt.slice(11, 16)} UTC`" severity="info" />
+                    <LayersDatePicker v-model="layerDate" />
 
                     <div class="flex items-center gap-2">
                         <ToggleSwitch v-model="liveWeather" inputId="fireLiveWeather" />

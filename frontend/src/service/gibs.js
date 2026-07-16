@@ -4,6 +4,14 @@
 const BASE = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
 const ATTRIBUTION = 'NASA GIBS / EOSDIS';
 
+// Нижняя граница date picker'а: старт архива IMERG (июнь 2000); MODIS чуть старше
+export const GIBS_MIN_DATE = new Date(2000, 5, 1);
+
+// Date → 'YYYY-MM-DD' в локальной зоне: toISOString() сдвинул бы день для GMT+5
+export function toIsoDate(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function yesterdayUtc() {
     return new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
 }

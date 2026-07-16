@@ -13,7 +13,8 @@ import { RISK_HAZARDS } from '@/config/riskHazards';
 import { api } from '@/service/api';
 import { isAdmin } from '@/service/auth';
 import { findDistrict, loadDistricts } from '@/service/geo';
-import { gibsOverlays } from '@/service/gibs';
+import LayersDatePicker from '@/components/risk/LayersDatePicker.vue';
+import { gibsOverlays, toIsoDate } from '@/service/gibs';
 import { degToCompass, fetchRegionWeather, fetchWindGrid, windMarkers } from '@/service/weather';
 import { useToast } from 'primevue/usetoast';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -75,9 +76,11 @@ const liveWeather = ref(true);
 const regionWeather = ref({});
 const weatherUpdatedAt = ref(null);
 const windGrid = ref(null);
-// Слои GIBS следуют выбранному сезону: середина марта — максимум снегозапаса
-// перед таянием; снимок/снег/осадки показывают обстановку именно того года
-const tileOverlays = computed(() => gibsOverlays(`${season.value}-03-15`));
+// Слои GIBS следуют дате в пикере. Дефолт от сезона: середина марта — максимум
+// снегозапаса перед таянием; смена сезона сбрасывает дату на его дефолт.
+const layerDate = ref(new Date(+season.value, 2, 15));
+watch(season, (y) => (layerDate.value = new Date(+y, 2, 15)));
+const tileOverlays = computed(() => gibsOverlays(toIsoDate(layerDate.value)));
 
 const weatherMarkers = computed(() =>
     liveWeather.value
@@ -181,6 +184,7 @@ async function setStatus(measure, status) {
             <RiskHeaderCard title="Паводковый риск-скоринг" description="Риск весеннего затопления населённых пунктов (ML-модель на событии 2024). Пилот: Северо-Казахстанская область.">
                 <template #controls>
                     <SeasonPicker v-model="season" :options="seasonOptions" />
+                    <LayersDatePicker v-model="layerDate" />
 
                     <div class="flex items-center gap-2">
                         <ToggleSwitch v-model="liveWeather" inputId="liveWeather" />
