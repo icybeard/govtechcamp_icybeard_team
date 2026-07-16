@@ -1,4 +1,7 @@
 <script setup>
+import HazardIcon from '@/components/risk/HazardIcon.vue';
+import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
+import { RISK_HAZARDS } from '@/config/riskHazards';
 import { api } from '@/service/api';
 import { loadDistricts } from '@/service/geo';
 import { computed, onMounted, ref } from 'vue';
@@ -24,6 +27,14 @@ const measureCounts = computed(() => {
     for (const m of measures.value) counts[m.status] = (counts[m.status] ?? 0) + 1;
     return counts;
 });
+
+// Строки очереди мер: иконка + цвета чипа по статусу (пары фон/текст — из дизайн-спецификации)
+const QUEUE_ROWS = [
+    { key: 'Proposed', label: 'Предложено системой', icon: 'pi-clock', bg: '#fff1e6', color: '#f97316' },
+    { key: 'Approved', label: 'Утверждено комиссией', icon: 'pi-check', bg: '#ecfdf3', color: '#12b76a' },
+    { key: 'Rejected', label: 'Отклонено', icon: 'pi-times', bg: '#fee4e2', color: '#d92d20' },
+    { key: 'Done', label: 'Выполнено', icon: 'pi-flag', bg: '#eaf2ff', color: '#2461c9' }
+];
 
 function topDistricts(valuesMap, n = 3) {
     return Object.entries(valuesMap)
@@ -74,80 +85,85 @@ onMounted(async () => {
         .then((h) => (hotspotsCount.value = Array.isArray(h) ? h.length : null))
         .catch(() => {});
 });
-
-function riskSeverity(value) {
-    return value >= 60 ? 'danger' : value >= 30 ? 'warn' : 'success';
-}
 </script>
 
 <template>
-    <div class="grid grid-cols-12 gap-8">
+    <div class="grid grid-cols-12 gap-4">
+        <!-- Заголовок страницы + CTA на ситуационную карту -->
         <div class="col-span-12">
             <div class="card mb-0">
-                <div class="flex items-center justify-between flex-wrap gap-3">
+                <div class="flex items-start justify-between flex-wrap gap-4">
                     <div>
-                        <h4 class="m-0">Превентивное управление природными рисками</h4>
-                        <span class="text-muted-color">Паводки (пилот: СКО) · пожары live · зима — по районам. AI предлагает — решение принимает человек.</span>
+                        <div class="dash-title">Превентивное управление природными рисками</div>
+                        <div class="dash-subtitle">Паводки (пилот: СКО) · пожары live · зима — по районам. AI предлагает — решение принимает человек.</div>
                     </div>
-                    <Button label="Карта паводков" icon="pi pi-map" as="router-link" to="/risks/flood" />
+                    <RouterLink to="/risks" class="dash-cta">
+                        <i class="pi pi-map" style="font-size: 15px"></i>
+                        Ситуационная карта
+                    </RouterLink>
                 </div>
                 <Message v-if="error" severity="error" :closable="false" class="mt-3">{{ error }}</Message>
             </div>
         </div>
 
-        <!-- Стат-плитки -->
+        <!-- KPI-плитки -->
         <div class="col-span-12 md:col-span-6 xl:col-span-3">
             <div class="card mb-0">
-                <span class="block text-muted-color font-medium mb-2">НП со скорами риска</span>
-                <div class="text-surface-900 dark:text-surface-0 font-medium text-3xl">{{ loading ? '…' : scores.length }}</div>
-                <span class="text-muted-color text-sm">пилотный регион</span>
+                <div class="kpi-label">НП со скорами риска</div>
+                <div class="kpi-value">{{ loading ? '…' : scores.length }}</div>
+                <div class="kpi-sub">пилотный регион</div>
             </div>
         </div>
         <div class="col-span-12 md:col-span-6 xl:col-span-3">
             <div class="card mb-0">
-                <span class="block text-muted-color font-medium mb-2">Высокий риск (скор ≥ 60)</span>
-                <div class="text-surface-900 dark:text-surface-0 font-medium text-3xl">{{ loading ? '…' : highRisk.length }}</div>
-                <span class="text-muted-color text-sm">населённых пунктов</span>
+                <div class="kpi-label">Высокий риск (скор ≥ 60)</div>
+                <div class="kpi-value">{{ loading ? '…' : highRisk.length }}</div>
+                <div class="kpi-sub">населённых пунктов</div>
             </div>
         </div>
         <div class="col-span-12 md:col-span-6 xl:col-span-3">
             <div class="card mb-0">
-                <span class="block text-muted-color font-medium mb-2">Население в зоне риска</span>
-                <div class="text-surface-900 dark:text-surface-0 font-medium text-3xl">{{ loading ? '…' : populationAtRisk.toLocaleString('ru-RU') }}</div>
-                <span class="text-muted-color text-sm">в НП со скором ≥ 60</span>
+                <div class="kpi-label">Население в зоне риска</div>
+                <div class="kpi-value">{{ loading ? '…' : populationAtRisk.toLocaleString('ru-RU') }}</div>
+                <div class="kpi-sub">в НП со скором ≥ 60</div>
             </div>
         </div>
         <div class="col-span-12 md:col-span-6 xl:col-span-3">
             <div class="card mb-0">
-                <span class="block text-muted-color font-medium mb-2">Мер ждёт решения</span>
-                <div class="text-surface-900 dark:text-surface-0 font-medium text-3xl">{{ loading ? '…' : measureCounts.Proposed }}</div>
-                <span class="text-muted-color text-sm">утверждено: {{ measureCounts.Approved }}, выполнено: {{ measureCounts.Done }}</span>
+                <div class="kpi-label">Мер ждёт решения</div>
+                <div class="kpi-value">{{ loading ? '…' : measureCounts.Proposed }}</div>
+                <div class="kpi-sub">утверждено: {{ measureCounts.Approved }}, выполнено: {{ measureCounts.Done }}</div>
             </div>
         </div>
 
         <!-- Сводки контуров: пожары сегодня и последняя зима -->
         <div class="col-span-12 xl:col-span-6">
             <div class="card mb-0 h-full">
-                <div class="flex items-center justify-between mb-3">
-                    <h5 class="m-0">🔥 Пожары — сегодня</h5>
-                    <Button label="Открыть" size="small" text as="router-link" to="/risks/fire" />
+                <div class="summary-head">
+                    <div class="summary-head__left">
+                        <span class="summary-chip" :style="{ background: RISK_HAZARDS.fire.bgColor }">
+                            <HazardIcon hazard="fire" :size="17" />
+                        </span>
+                        <span class="summary-title">Пожары — сегодня</span>
+                    </div>
+                    <RouterLink to="/risks/fire" class="dash-link">Открыть →</RouterLink>
                 </div>
-                <div class="flex gap-6 mb-3 flex-wrap">
+                <div class="flex gap-9 mb-4 flex-wrap">
                     <div>
-                        <div class="text-2xl font-medium">{{ hotspotsCount ?? '—' }}</div>
-                        <span class="text-muted-color text-sm">активных очагов за 24 ч</span>
+                        <div class="stat-value" :class="{ 'stat-value--empty': hotspotsCount === null }">{{ hotspotsCount ?? '—' }}</div>
+                        <div class="stat-sub">активных очагов за 24 ч</div>
                     </div>
                     <div>
-                        <div class="text-2xl font-medium">{{ fireHigh ?? '—' }}</div>
-                        <span class="text-muted-color text-sm">районов с ML-прогнозом ≥ 60</span>
+                        <div class="stat-value" :class="{ 'stat-value--empty': fireHigh === null }">{{ fireHigh ?? '—' }}</div>
+                        <div class="stat-sub">районов с ML-прогнозом ≥ 60</div>
                     </div>
                 </div>
                 <template v-if="fireTop.length">
-                    <span class="text-muted-color text-sm">Топ районов по ML-прогнозу{{ fireMl ? ` (от ${fireMl.generatedAt.slice(11, 16)} UTC)` : '' }}:</span>
-                    <ul class="list-none p-0 m-0 mt-2 flex flex-col gap-1">
-                        <li v-for="d in fireTop" :key="d.name" class="flex items-center justify-between">
+                    <div class="top-caption">Топ районов по ML-прогнозу{{ fireMl ? ` (от ${fireMl.generatedAt.slice(11, 16)} UTC)` : '' }}:</div>
+                    <ul class="list-none p-0 m-0 flex flex-col">
+                        <li v-for="d in fireTop" :key="d.name" class="top-row">
                             <span>{{ d.name }}</span>
-                            <Tag :value="d.value" :severity="riskSeverity(d.value)" />
+                            <RiskScoreBadge :score="d.value" suffix="" size="sm" />
                         </li>
                     </ul>
                 </template>
@@ -157,22 +173,25 @@ function riskSeverity(value) {
 
         <div class="col-span-12 xl:col-span-6">
             <div class="card mb-0 h-full">
-                <div class="flex items-center justify-between mb-3">
-                    <h5 class="m-0">❄️ Зима {{ winterLatest ? `${winterLatest - 1}–${String(winterLatest).slice(2)}` : '' }}</h5>
-                    <Button label="Открыть" size="small" text as="router-link" to="/risks/winter" />
-                </div>
-                <div class="flex gap-6 mb-3 flex-wrap">
-                    <div>
-                        <div class="text-2xl font-medium">{{ winterLatest ? winterHigh : '—' }}</div>
-                        <span class="text-muted-color text-sm">районов с индексом ≥ 35</span>
+                <div class="summary-head">
+                    <div class="summary-head__left">
+                        <span class="summary-chip" :style="{ background: RISK_HAZARDS.winter.bgColor }">
+                            <HazardIcon hazard="winter" :size="17" />
+                        </span>
+                        <span class="summary-title">Зима {{ winterLatest ? `${winterLatest - 1}–${String(winterLatest).slice(2)}` : '' }}</span>
                     </div>
+                    <RouterLink to="/risks/winter" class="dash-link">Открыть →</RouterLink>
+                </div>
+                <div class="mb-4">
+                    <div class="stat-value" :class="{ 'stat-value--empty': !winterLatest }">{{ winterLatest ? winterHigh : '—' }}</div>
+                    <div class="stat-sub">районов с индексом ≥ 35</div>
                 </div>
                 <template v-if="winterTop.length">
-                    <span class="text-muted-color text-sm">Топ районов по индексу зимней опасности:</span>
-                    <ul class="list-none p-0 m-0 mt-2 flex flex-col gap-1">
-                        <li v-for="d in winterTop" :key="d.name" class="flex items-center justify-between">
+                    <div class="top-caption">Топ районов по индексу зимней опасности:</div>
+                    <ul class="list-none p-0 m-0 flex flex-col">
+                        <li v-for="d in winterTop" :key="d.name" class="top-row">
                             <span>{{ d.name }}</span>
-                            <Tag :value="d.value" :severity="d.value > 60 ? 'danger' : d.value > 35 ? 'warn' : 'success'" />
+                            <RiskScoreBadge :score="d.value" suffix="" size="sm" />
                         </li>
                     </ul>
                 </template>
@@ -183,10 +202,12 @@ function riskSeverity(value) {
         <!-- Топ-10 НП по риску -->
         <div class="col-span-12 xl:col-span-7">
             <div class="card mb-0">
-                <h5>Топ-10 НП по риску затопления</h5>
+                <div class="dash-card-title">Топ-10 НП по риску затопления</div>
                 <DataTable :value="top10" size="small" :loading="loading">
                     <Column header="#" style="width: 3rem">
-                        <template #body="{ index }">{{ index + 1 }}</template>
+                        <template #body="{ index }">
+                            <span class="text-muted-color">{{ index + 1 }}</span>
+                        </template>
                     </Column>
                     <Column field="name" header="Населённый пункт" />
                     <Column field="population" header="Население" style="width: 9rem">
@@ -196,12 +217,12 @@ function riskSeverity(value) {
                     </Column>
                     <Column field="value" header="Скор" style="width: 7rem">
                         <template #body="{ data }">
-                            <Tag :value="Math.round(data.value)" :severity="riskSeverity(data.value)" />
+                            <RiskScoreBadge :score="Math.round(data.value)" suffix="" size="sm" />
                         </template>
                     </Column>
                     <Column header="Главный фактор">
                         <template #body="{ data }">
-                            <span class="text-muted-color">{{ data.factors?.[0]?.name ?? '—' }}</span>
+                            <span class="factor-cell">{{ data.factors?.[0]?.name ?? '—' }}</span>
                         </template>
                     </Column>
                     <template #empty>Скоры не загружены — см. пайплайн в ml/i6-flood-risk/README.md</template>
@@ -212,27 +233,177 @@ function riskSeverity(value) {
         <!-- Статусы мер -->
         <div class="col-span-12 xl:col-span-5">
             <div class="card mb-0 h-full">
-                <h5>Очередь превентивных мер</h5>
-                <ul class="list-none p-0 m-0 flex flex-col gap-4 mt-4">
-                    <li class="flex items-center justify-between">
-                        <span><i class="pi pi-clock text-orange-500 mr-2"></i>Предложено системой</span>
-                        <span class="font-medium text-xl">{{ measureCounts.Proposed }}</span>
-                    </li>
-                    <li class="flex items-center justify-between">
-                        <span><i class="pi pi-check-circle text-green-500 mr-2"></i>Утверждено комиссией</span>
-                        <span class="font-medium text-xl">{{ measureCounts.Approved }}</span>
-                    </li>
-                    <li class="flex items-center justify-between">
-                        <span><i class="pi pi-times-circle text-red-500 mr-2"></i>Отклонено</span>
-                        <span class="font-medium text-xl">{{ measureCounts.Rejected }}</span>
-                    </li>
-                    <li class="flex items-center justify-between">
-                        <span><i class="pi pi-flag-fill text-blue-500 mr-2"></i>Выполнено</span>
-                        <span class="font-medium text-xl">{{ measureCounts.Done }}</span>
+                <div class="dash-card-title">Очередь превентивных мер</div>
+                <ul class="list-none p-0 m-0 flex flex-col gap-1 mb-4">
+                    <li v-for="row in QUEUE_ROWS" :key="row.key" class="queue-row">
+                        <div class="queue-row__left">
+                            <span class="queue-chip" :style="{ background: row.bg, color: row.color }">
+                                <i class="pi" :class="row.icon" style="font-size: 13px"></i>
+                            </span>
+                            <span>{{ row.label }}</span>
+                        </div>
+                        <span class="queue-count">{{ measureCounts[row.key] }}</span>
                     </li>
                 </ul>
-                <Button label="К очереди мер" icon="pi pi-list" outlined class="w-full mt-6" as="router-link" to="/risks/flood" />
+                <RouterLink to="/risks/flood" class="dash-outline-btn">
+                    <i class="pi pi-list" style="font-size: 14px"></i>
+                    К очереди мер
+                </RouterLink>
             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+/* Типографика по дизайн-спецификации: заголовки 16–23px/700–800,
+   числа KPI 26–28px/800, служебный текст 11–12px #98a2b3 */
+.dash-title {
+    font-size: 23px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+.dash-subtitle {
+    font-size: 14px;
+    color: var(--text-color-secondary);
+}
+.dash-card-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 16px;
+}
+
+/* Тил-бренд ICYBEARD (#0d9488) — CTA, ссылки и вторичная кнопка */
+.dash-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #0d9488;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 11px 20px;
+    border-radius: 10px;
+    white-space: nowrap;
+    transition: background 0.1s;
+}
+.dash-cta:hover {
+    background: #0b7e73;
+}
+.dash-link {
+    font-size: 13px;
+    font-weight: 600;
+    color: #0d9488;
+    white-space: nowrap;
+}
+.dash-outline-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid var(--surface-border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: #0d9488;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.1s;
+}
+.dash-outline-btn:hover {
+    background: #f0fdfa;
+}
+
+.kpi-label {
+    font-size: 13px;
+    color: var(--text-color-secondary);
+    margin-bottom: 10px;
+}
+.kpi-value {
+    font-size: 28px;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+.kpi-sub {
+    font-size: 12px;
+    color: #98a2b3;
+}
+
+.summary-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+.summary-head__left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.summary-chip {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.summary-title {
+    font-size: 16px;
+    font-weight: 700;
+}
+.stat-value {
+    font-size: 26px;
+    font-weight: 800;
+}
+.stat-value--empty {
+    color: #c6c6c0;
+}
+.stat-sub {
+    font-size: 12px;
+    color: #98a2b3;
+    margin-top: 2px;
+}
+.top-caption {
+    font-size: 12px;
+    color: #98a2b3;
+    margin-bottom: 6px;
+}
+.top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-top: 1px solid var(--surface-border);
+    font-size: 14px;
+}
+
+.queue-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 4px;
+    font-size: 14px;
+}
+.queue-row__left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.queue-chip {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.queue-count {
+    font-weight: 700;
+}
+.factor-cell {
+    font-size: 13px;
+    color: #0d9488;
+}
+</style>

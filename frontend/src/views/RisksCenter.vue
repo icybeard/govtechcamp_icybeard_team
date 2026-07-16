@@ -1,35 +1,32 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { RISK_MODE_KEY } from '@/config/riskHazards';
+import { computed, provide, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import FireRisk from './ideas/FireRisk.vue';
 import FloodRisk from './ideas/FloodRisk.vue';
 import WinterRisk from './ideas/WinterRisk.vue';
 
-// Единая страница природных рисков: слайдер переключает полные представления
+// Единая страница природных рисков: табы переключают полные представления
 // контуров (карта + панели + таблицы). KeepAlive сохраняет состояние и данные
 // каждого контура между переключениями.
-const MODES = [
-    { label: '🌊 Паводки', value: 'flood', component: FloodRisk },
-    { label: '🔥 Пожары', value: 'fire', component: FireRisk },
-    { label: '❄️ Зима', value: 'winter', component: WinterRisk }
-];
+//
+// Табы рендерит шапка активного модуля (RiskHeaderCard) — вместе с заголовком
+// они образуют одну карточку, как в макете. Состояние вкладки живёт здесь
+// и отдаётся шапке через provide(RISK_MODE_KEY).
+const COMPONENTS = { flood: FloodRisk, fire: FireRisk, winter: WinterRisk };
 
 const route = useRoute();
 const router = useRouter();
 
-const mode = ref(MODES.some((m) => m.value === route.query.mode) ? route.query.mode : 'flood');
+const mode = ref(route.query.mode in COMPONENTS ? route.query.mode : 'flood');
 watch(mode, (value) => router.replace({ query: { ...route.query, mode: value } }));
+provide(RISK_MODE_KEY, mode);
 
-const current = computed(() => MODES.find((m) => m.value === mode.value).component);
+const current = computed(() => COMPONENTS[mode.value]);
 </script>
 
 <template>
-    <div class="flex flex-col gap-4">
-        <div class="flex justify-center">
-            <SelectButton v-model="mode" :options="MODES" optionLabel="label" optionValue="value" :allowEmpty="false" />
-        </div>
-        <KeepAlive>
-            <component :is="current" :key="mode" />
-        </KeepAlive>
-    </div>
+    <KeepAlive>
+        <component :is="current" :key="mode" />
+    </KeepAlive>
 </template>

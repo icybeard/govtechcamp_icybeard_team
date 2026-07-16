@@ -1,21 +1,32 @@
 <script setup>
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
+import GranularitySwitcher from '@/components/risk/GranularitySwitcher.vue';
+import MapHintBadge from '@/components/risk/MapHintBadge.vue';
+import RiskEntityCard from '@/components/risk/RiskEntityCard.vue';
+import RiskHeaderCard from '@/components/risk/RiskHeaderCard.vue';
+import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
+import { RISK_HAZARDS } from '@/config/riskHazards';
 import { api } from '@/service/api';
 import { gibsOverlays } from '@/service/gibs';
 import { degToCompass, fetchRegionWeather, fetchWindGrid } from '@/service/weather';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 /**
- * Ситуационная live-карта пожаров: метео-индекс по областям (Open-Meteo, сейчас),
- * очаги NASA FIRMS за 24 ч, стрелки ветра, спутниковые слои GIBS.
+ * Риск-скоринг природных пожаров: метео-индекс по районам (Open-Meteo, сейчас) +
+ * историческая частота очагов NASA FIRMS; очаги за 24 ч; спутниковые слои GIBS.
  * Автообновление раз в час (бережём суточный лимит Open-Meteo).
- * Индекс — прозрачная формула (не ML): temp/35·25 + (100−RH)/100·35 + wind/40·20 + dryDays/7·20.
+ * ML-прогноз на сегодня (LightGBM) показывается в карточке района.
  */
 // Раз в час: 174 района + сетка ветра ≈ 370 взвешенных запросов за обновление —
 // 15-минутный интервал выжигал суточный лимит Open-Meteo за считанные часы
 const REFRESH_MS = 60 * 60 * 1000;
 // Районы (ADM2, 174 шт.) вместо областей — детальнее для патрулей
 const GEO_URL = '/geo/kz-districts.geojson';
+const HAZARD = RISK_HAZARDS.fire;
+
+// Скоринг пожаров есть только на уровне района — «Населённый пункт»
+// в GranularitySwitcher заблокирован (как в макете), пока нет модели по НП.
+const GRANULARITY = 'region';
 
 const loading = ref(true);
 const error = ref(null);
@@ -25,10 +36,14 @@ const hotspotsError = ref(null);
 const selected = ref(null);
 const updatedAt = ref(null);
 const windGrid = ref(null);
+// Live-погода поверх карты: анимация частиц ветра. Сам скор тоже метео-live,
+// тумблер управляет только визуальным слоем ветра.
+const liveWeather = ref(true);
 // Историческая частота очагов июля 2021–2025 по районам (scripts/fire_history.py):
 // data-driven приор, смешивается с live-метео-индексом 50/50
 const fireHistory = ref({});
-// ML-прогноз на сегодня (LightGBM, ml/i9-fire-risk/fire_ml.py today) — отдельный режим карты
+// ML-прогноз на сегодня (LightGBM, ml/i9-fire-risk/fire_ml.py today) —
+// отдельный режим карты + строка в карточке района
 const mlToday = ref(null); // { generatedAt, values: {shapeID: 0-100} }
 const mode = ref('composite');
 const modeOptions = computed(() => [
@@ -49,7 +64,8 @@ const compositeValues = computed(() =>
     )
 );
 const indexValues = computed(() => (mode.value === 'ml' && mlToday.value ? mlToday.value.values : compositeValues.value));
-const legendTitle = computed(() => (mode.value === 'ml' ? 'ML-прогноз (P×100)' : hasHistory.value ? 'Риск (метео+история)' : 'Метео-индекс'));
+const legendTitle = computed(() => (mode.value === 'ml' ? 'ML-прогноз (P×100)' : hasHistory.value ? 'Риск пожара' : 'Метео-индекс'));
+const scoredCount = computed(() => Object.keys(indexValues.value).length);
 
 // стрелки по 174 районам были бы кашей — ветер показывает анимация частиц
 const markers = computed(() =>
@@ -131,75 +147,78 @@ function onRegionClick(region) {
 </script>
 
 <template>
-    <div class="grid grid-cols-12 gap-6">
+    <div class="grid grid-cols-12 gap-4">
         <div class="col-span-12">
-            <div class="card mb-0">
-                <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
-                    <div>
-                        <h4 class="m-0">Пожарная обстановка — live</h4>
-                        <span class="text-muted-color">Риск по районам = live-метео (Open-Meteo) + историческая частота очагов (FIRMS, июль 2021–2025); очаги за 24 ч; слои GIBS. Обновление раз в час.</span>
+            <RiskHeaderCard title="Риск-скоринг природных пожаров" description="Риск возникновения очагов возгорания по метеоданным (Open-Meteo) и истории NASA FIRMS. Все районы Казахстана, очаги за 24 ч, обновление раз в час.">
+                <template #controls>
+                    <SelectButton v-model="mode" :options="modeOptions" optionLabel="label" optionValue="value" optionDisabled="disabled" size="small" />
+                    <Tag v-if="mode === 'ml' && mlToday" :value="`прогноз от ${mlToday.generatedAt.slice(11, 16)} UTC`" severity="info" />
+
+                    <div class="flex items-center gap-2">
+                        <ToggleSwitch v-model="liveWeather" inputId="fireLiveWeather" />
+                        <label for="fireLiveWeather" class="text-muted-color">Live-погода</label>
                     </div>
-                    <div class="flex items-center gap-3 flex-wrap">
-                        <SelectButton v-model="mode" :options="modeOptions" optionLabel="label" optionValue="value" optionDisabled="disabled" size="small" />
-                        <Tag v-if="mode === 'ml' && mlToday" :value="`прогноз от ${mlToday.generatedAt.slice(11, 16)} UTC`" severity="info" />
-                        <Tag v-if="updatedAt" :value="`обновлено ${updatedAt}`" severity="success" />
-                        <Tag v-if="hotspots.length" :value="`очагов за 24 ч: ${hotspots.length}`" severity="danger" />
-                        <Tag v-else-if="!hotspotsError" value="очагов нет" severity="success" />
+
+                    <Tag v-if="updatedAt" :value="`обновлено ${updatedAt}`" severity="success" />
+                    <Tag v-if="scoredCount" :value="`Районов со скорами: ${scoredCount}`" severity="success" />
+                    <Tag v-if="hotspots.length" :value="`очагов за 24 ч: ${hotspots.length}`" severity="danger" />
+                    <Tag v-else-if="!hotspotsError" value="очагов нет" severity="success" />
+
+                    <div style="margin-left: auto">
+                        <GranularitySwitcher :model-value="GRANULARITY" :supports-region="true" :supports-np="false" />
                     </div>
-                </div>
-                <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
-                <Message v-if="hotspotsError" severity="warn" :closable="false">Очаги FIRMS: {{ hotspotsError }}</Message>
-            </div>
+                </template>
+                <template #messages>
+                    <Message v-if="error" severity="error" :closable="false" class="mt-4">{{ error }}</Message>
+                    <Message v-if="hotspotsError" severity="warn" :closable="false" class="mt-4">Очаги FIRMS: {{ hotspotsError }}</Message>
+                </template>
+            </RiskHeaderCard>
         </div>
 
         <div class="col-span-12">
             <div class="card mb-0">
-                <div class="relative">
-                    <KazakhstanMap height="72vh" :geo-url="GEO_URL" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="windGrid" :legend-title="legendTitle" @region-click="onRegionClick" />
+                <!-- isolate: свой контекст наложения — карточка объекта и подсказка (z-index 1000)
+                     не всплывают над фиксированным топбаром при прокрутке -->
+                <div class="relative isolate">
+                    <!-- 600px — высота основной карты по дизайн-спецификации -->
+                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" :legend-title="legendTitle" @region-click="onRegionClick" />
 
-                    <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
-                        <Tag value="Кликните район — разбор метео-индекса" severity="secondary" />
-                    </div>
-                    <div v-else class="card m-0 shadow-lg" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000; width: 340px; max-width: 85%; max-height: calc(100% - 2rem); overflow-y: auto">
-                        <div class="flex items-start justify-between mb-2">
-                            <h5 class="m-0">Район</h5>
-                            <Button icon="pi pi-times" text rounded size="small" @click="selected = null" />
-                        </div>
-                        <div class="text-2xl font-medium mb-2">{{ selected.name }}</div>
-                        <div class="mb-4 flex items-center gap-2 flex-wrap">
+                    <MapHintBadge v-if="!selected" text="Кликните район — скор, факторы «почему» и меры" />
+                    <RiskEntityCard v-else entity-label="Район" :name="selected.name" :color="HAZARD.color" @close="selected = null">
+                        <div class="risk-meta-row mb-4">
                             Риск района:
-                            <Tag :value="selected.combined + ' / 100'" :severity="selected.combined > 60 ? 'danger' : selected.combined > 35 ? 'warn' : 'success'" />
+                            <RiskScoreBadge :score="selected.combined" />
                         </div>
 
-                        <h6>Метео-индекс сейчас: {{ selected.index }}</h6>
+                        <div class="risk-section-title">Метео-индекс сейчас: {{ selected.index }}</div>
                         <ul class="list-none p-0 m-0 flex flex-col gap-2 mb-4">
-                            <li v-for="p in selected.parts" :key="p.name" class="flex items-center justify-between gap-3">
-                                <span>{{ p.name }}</span>
+                            <li v-for="p in selected.parts" :key="p.name" class="risk-metric-row">
+                                <span class="risk-metric-label">{{ p.name }}</span>
                                 <Tag :value="'+' + p.value" :severity="p.value >= 15 ? 'danger' : p.value >= 8 ? 'warn' : 'secondary'" />
                             </li>
                         </ul>
 
-                        <div v-if="selected.ml !== undefined" class="flex items-center justify-between gap-3 mb-3">
-                            <span>ML-прогноз на сегодня</span>
-                            <Tag :value="selected.ml + ' / 100'" :severity="selected.ml > 60 ? 'danger' : selected.ml > 35 ? 'warn' : 'success'" />
+                        <div v-if="selected.ml !== undefined" class="risk-metric-row mb-3">
+                            <span class="risk-metric-label">ML-прогноз на сегодня</span>
+                            <RiskScoreBadge :score="selected.ml" />
                         </div>
 
                         <template v-if="selected.history">
-                            <h6>История (июль 2021–2025)</h6>
-                            <div class="flex items-center justify-between gap-3 mb-3">
-                                <span>Очагов за 5 июлей: {{ selected.history.count.toLocaleString('ru-RU') }}</span>
+                            <div class="risk-section-title">История (июль 2021–2025)</div>
+                            <div class="risk-metric-row mb-3">
+                                <span class="risk-metric-label">Очагов за 5 июлей: {{ selected.history.count.toLocaleString('ru-RU') }}</span>
                                 <Tag :value="'приор ' + Math.round(selected.history.prior)" :severity="selected.history.prior > 60 ? 'danger' : selected.history.prior > 35 ? 'warn' : 'secondary'" />
                             </div>
                         </template>
 
-                        <ul class="list-none p-0 m-0 flex flex-col gap-2 text-muted-color">
-                            <li>Ветер: {{ selected.windSpeed }} км/ч, {{ degToCompass(selected.windDir) }}</li>
-                            <li>Осадки: вчера {{ selected.precip24h }} мм, за 7 дней {{ selected.precip7d }} мм</li>
+                        <ul class="list-none p-0 m-0 flex flex-col gap-1">
+                            <li class="risk-footnote">Ветер: {{ selected.windSpeed }} км/ч, {{ degToCompass(selected.windDir) }}</li>
+                            <li class="risk-footnote">Осадки: вчера {{ selected.precip24h }} мм, за 7 дней {{ selected.precip7d }} мм</li>
                         </ul>
-                        <p class="text-muted-color mt-3 mb-0 text-sm">
+                        <p class="risk-footnote mt-3 mb-0">
                             {{ hasHistory ? 'Риск = 0.5·метео-сейчас + 0.5·историческая частота очагов (NASA FIRMS, лог-шкала).' : 'Метео-индекс — прозрачный baseline; история FIRMS не загружена.' }}
                         </p>
-                    </div>
+                    </RiskEntityCard>
                 </div>
             </div>
         </div>

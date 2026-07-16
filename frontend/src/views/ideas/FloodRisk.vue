@@ -1,5 +1,15 @@
 <script setup>
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
+import GranularitySwitcher from '@/components/risk/GranularitySwitcher.vue';
+import MapHintBadge from '@/components/risk/MapHintBadge.vue';
+import MeasuresQueue from '@/components/risk/MeasuresQueue.vue';
+import RiskEntityCard from '@/components/risk/RiskEntityCard.vue';
+import RiskHeaderCard from '@/components/risk/RiskHeaderCard.vue';
+import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
+import SeasonalBarChart from '@/components/risk/SeasonalBarChart.vue';
+import SeasonPicker from '@/components/risk/SeasonPicker.vue';
+import { MEASURE_STATUS } from '@/config/measureStatus';
+import { RISK_HAZARDS } from '@/config/riskHazards';
 import { api } from '@/service/api';
 import { isAdmin } from '@/service/auth';
 import { findDistrict, loadDistricts } from '@/service/geo';
@@ -8,9 +18,13 @@ import { degToCompass, fetchRegionWeather, fetchWindGrid, windMarkers } from '@/
 import { useToast } from 'primevue/usetoast';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
-const REGION = 'KZ-SEV'; // СКО — пилотный регион И-6 (см. docs/ideas/i6-flood-risk/plan.md)
 const MODULE = 'flood-risk';
 const CURRENT_SEASON = '2024';
+const HAZARD = RISK_HAZARDS.flood;
+
+// Скоринг паводков есть только на уровне НП — «Регион» в GranularitySwitcher
+// заблокирован (как в макете), пока модель не научится агрегировать риск на район.
+const GRANULARITY = 'np';
 
 // Ретроспектива сезонов: модель 2024 на погоде каждого года (см. ml/i6-flood-risk/score_years.py)
 const season = ref(CURRENT_SEASON);
@@ -27,9 +41,13 @@ const loading = ref(true);
 const error = ref(null);
 const points = ref([]);
 const selected = ref(null);
+const measures = ref([]);
+const generating = ref(false);
 
-// Хороплет районов: скор района = максимум по его сёлам (везде районы, как на пожарах).
-// Привязка село→район считается один раз (point-in-polygon), сезоны меняют только значения.
+// Хороплет районов: скор района = максимум по его сёлам — контекстная подложка
+// под точками НП. Привязка село→район считается один раз (point-in-polygon),
+// сезоны меняют только значения. Скоринг при этом остаётся на уровне НП —
+// «Регион» в переключателе детализации заблокирован.
 const GEO_URL = '/geo/kz-districts.geojson';
 const districtBySettlement = ref({}); // settlementId -> shapeID
 const districtValues = computed(() => {
@@ -50,8 +68,6 @@ async function assignDistricts() {
     }
     districtBySettlement.value = assignments;
 }
-const measures = ref([]);
-const generating = ref(false);
 
 // Live-погода поверх карты (Open-Meteo): скор — сезонный (снеготаяние),
 // live-слой показывает текущую обстановку. Автообновление раз в час.
@@ -86,9 +102,6 @@ const selectedMeasures = computed(() => (selected.value ? measures.value.filter(
 // Клик по точке на карте фильтрует очередь мер по выбранному селу
 const visibleMeasures = computed(() => (selected.value ? selectedMeasures.value : measures.value));
 const scoreBySettlement = computed(() => Object.fromEntries(points.value.map((p) => [p.id, p.value])));
-
-const statusSeverity = { Proposed: 'warn', Approved: 'success', Rejected: 'danger', Done: 'info' };
-const statusLabel = { Proposed: 'Предложено', Approved: 'Утверждено', Rejected: 'Отклонено', Done: 'Выполнено' };
 
 function toPoint(s) {
     return {
@@ -137,26 +150,6 @@ onBeforeUnmount(() => clearInterval(weatherTimer));
 
 watch(season, loadSeasonScores);
 
-const chartData = computed(() => ({
-    labels: seasonSummary.value.map((s) => s.year),
-    datasets: [
-        {
-            label: 'Снегозапас марта, % нормы',
-            data: seasonSummary.value.map((s) => s.sweMedianPctNorm),
-            backgroundColor: seasonSummary.value.map((s) => (String(s.year) === season.value ? '#1d4ed8' : '#93c5fd')),
-            borderRadius: 4
-        }
-    ]
-}));
-const chartOptions = {
-    plugins: { legend: { display: false } },
-    scales: { y: { beginAtZero: true, title: { display: true, text: '% нормы' } } },
-    onClick: (_, elements) => {
-        if (elements.length) season.value = String(seasonSummary.value[elements[0].index].year);
-    },
-    maintainAspectRatio: false
-};
-
 async function generateMeasures() {
     generating.value = true;
     try {
@@ -181,144 +174,101 @@ async function setStatus(measure, status) {
 </script>
 
 <template>
-    <div class="grid grid-cols-12 gap-6">
+    <div class="grid grid-cols-12 gap-4">
         <div class="col-span-12">
-            <div class="card mb-0">
-                <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
-                    <div>
-                        <h4 class="m-0">Паводковый риск-скоринг</h4>
-                        <span class="text-muted-color">Риск весеннего затопления населённых пунктов (ML-модель на событии 2024). Пилот: Северо-Казахстанская область.</span>
+            <RiskHeaderCard title="Паводковый риск-скоринг" description="Риск весеннего затопления населённых пунктов (ML-модель на событии 2024). Пилот: Северо-Казахстанская область.">
+                <template #controls>
+                    <SeasonPicker v-model="season" :options="seasonOptions" />
+
+                    <div class="flex items-center gap-2">
+                        <ToggleSwitch v-model="liveWeather" inputId="liveWeather" />
+                        <label for="liveWeather" class="text-muted-color">Live-погода</label>
                     </div>
-                    <div class="flex items-center gap-3 flex-wrap">
-                        <div class="flex items-center gap-2">
-                            <label for="seasonSelect" class="text-muted-color">Сезон</label>
-                            <Select v-model="season" inputId="seasonSelect" :options="seasonOptions" optionLabel="label" optionValue="value" size="small" />
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <ToggleSwitch v-model="liveWeather" inputId="liveWeather" />
-                            <label for="liveWeather" class="text-muted-color">Live-погода</label>
-                            <Tag v-if="liveWeather && weatherUpdatedAt" :value="`обновлено ${weatherUpdatedAt}`" severity="success" />
-                        </div>
-                        <Tag v-if="points.length" :value="`НП со скорами: ${points.length}`" severity="success" />
-                        <Tag v-else value="данные не загружены" severity="warn" />
-                        <Button v-if="isAdmin && points.length" label="Сгенерировать черновики мер" icon="pi pi-bolt" size="small" :loading="generating" @click="generateMeasures" />
+
+                    <Tag v-if="liveWeather && weatherUpdatedAt" :value="`обновлено ${weatherUpdatedAt}`" severity="success" />
+                    <Tag v-if="points.length" :value="`НП со скорами: ${points.length}`" severity="success" />
+                    <Tag v-else value="данные не загружены" severity="warn" />
+
+                    <div class="flex items-center gap-3 flex-wrap" style="margin-left: auto">
+                        <GranularitySwitcher :model-value="GRANULARITY" :supports-region="false" :supports-np="true" />
+                        <Button v-if="isAdmin && points.length" label="Сгенерировать черновики мер" severity="contrast" size="small" :loading="generating" @click="generateMeasures" />
                     </div>
-                </div>
-                <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
-                <Message v-else-if="!loading && points.length === 0" severity="info" :closable="false">
-                    Скоры ещё не загружены. Пайплайн: <code>scripts/download_settlements.py</code> → <code>scripts/load_settlements.py</code> → ML (<code>ml/i6-flood-risk/</code>) → <code>PUT /api/settlements/metrics</code>.
-                </Message>
-            </div>
+                </template>
+                <template #messages>
+                    <Message v-if="error" severity="error" :closable="false" class="mt-4">{{ error }}</Message>
+                    <Message v-else-if="!loading && points.length === 0" severity="info" :closable="false" class="mt-4">
+                        Скоры ещё не загружены. Пайплайн: <code>scripts/download_settlements.py</code> → <code>scripts/load_settlements.py</code> → ML (<code>ml/i6-flood-risk/</code>) → <code>PUT /api/settlements/metrics</code>.
+                    </Message>
+                </template>
+            </RiskHeaderCard>
         </div>
 
         <div class="col-span-12">
             <div class="card mb-0">
-                <div class="relative">
-                    <KazakhstanMap height="72vh" :geo-url="GEO_URL" :values="districtValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" legend-title="Риск паводка" @point-click="selected = $event" @region-click="selected = null" />
+                <!-- isolate: свой контекст наложения — карточка объекта и подсказка (z-index 1000)
+                     не всплывают над фиксированным топбаром при прокрутке -->
+                <div class="relative isolate">
+                    <!-- 600px — высота основной карты по дизайн-спецификации -->
+                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="districtValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" legend-title="Риск паводка" @point-click="selected = $event" @region-click="selected = null" />
 
-                    <div v-if="!selected" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000">
-                        <Tag value="Кликните НП — скор, факторы «почему» и меры" severity="secondary" />
-                    </div>
-                    <div v-else class="card m-0 shadow-lg" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000; width: 340px; max-width: 85%; max-height: calc(100% - 2rem); overflow-y: auto">
-                        <div class="flex items-start justify-between mb-2">
-                            <h5 class="m-0">Населённый пункт</h5>
-                            <Button icon="pi pi-times" text rounded size="small" @click="selected = null" />
+                    <MapHintBadge v-if="!selected" text="Кликните НП — скор, факторы «почему» и меры" />
+                    <RiskEntityCard v-else entity-label="Населённый пункт" :name="selected.name" :color="HAZARD.color" @close="selected = null">
+                        <div v-if="selected.population" class="risk-meta-row mb-3">Население: {{ selected.population.toLocaleString('ru-RU') }}</div>
+                        <div class="risk-meta-row mb-4">
+                            Риск НП ({{ season }}):
+                            <RiskScoreBadge :score="selected.value" />
+                            <Tag v-if="season !== CURRENT_SEASON && base2024Scores[selected.id] !== undefined" :value="`2024: ${base2024Scores[selected.id]}`" severity="secondary" />
                         </div>
-                    <div class="text-2xl font-medium mb-1">{{ selected.name }}</div>
-                    <div class="text-muted-color mb-3" v-if="selected.population">Население: {{ selected.population.toLocaleString('ru-RU') }}</div>
-                    <div class="mb-4 flex items-center gap-2 flex-wrap">
-                        Скор риска ({{ season }}):
-                        <Tag :value="selected.value ?? '—'" :severity="selected.value > 60 ? 'danger' : selected.value > 30 ? 'warn' : 'success'" />
-                        <Tag v-if="season !== CURRENT_SEASON && base2024Scores[selected.id] !== undefined" :value="`2024: ${base2024Scores[selected.id]}`" severity="secondary" />
-                    </div>
 
-                    <h6>Почему такой скор</h6>
-                    <ul v-if="selected.factors?.length" class="list-none p-0 m-0 flex flex-col gap-2 mb-4">
-                        <li v-for="f in selected.factors" :key="f.name" class="flex items-center justify-between gap-3">
-                            <span>{{ f.name }}</span>
-                            <Tag :value="(f.impact > 0 ? '+' : '') + f.impact.toFixed(2)" :severity="f.impact > 0 ? 'danger' : 'success'" />
-                        </li>
-                    </ul>
-                    <p v-else class="text-muted-color mb-4">Факторы появятся после загрузки SHAP-объяснений из ML-пайплайна.</p>
+                        <div class="risk-section-title">Почему такой скор</div>
+                        <ul v-if="selected.factors?.length" class="list-none p-0 m-0 flex flex-col gap-2 mb-4">
+                            <li v-for="f in selected.factors" :key="f.name" class="risk-metric-row">
+                                <span class="risk-metric-label">{{ f.name }}</span>
+                                <Tag :value="(f.impact > 0 ? '+' : '') + f.impact.toFixed(2)" :severity="f.impact > 0 ? 'danger' : 'success'" />
+                            </li>
+                        </ul>
+                        <p v-else class="text-muted-color mb-4">Факторы появятся после загрузки SHAP-объяснений из ML-пайплайна.</p>
 
-                    <h6>Меры по этому НП</h6>
-                    <ul v-if="selectedMeasures.length" class="list-none p-0 m-0 flex flex-col gap-2">
-                        <li v-for="m in selectedMeasures" :key="m.id" class="flex items-center justify-between gap-2">
-                            <span>{{ m.title }}</span>
-                            <Tag :value="statusLabel[m.status]" :severity="statusSeverity[m.status]" />
-                        </li>
-                    </ul>
+                        <div class="risk-section-title">Меры по этому НП</div>
+                        <ul v-if="selectedMeasures.length" class="list-none p-0 m-0 flex flex-col gap-2">
+                            <li v-for="m in selectedMeasures" :key="m.id" class="risk-metric-row">
+                                <span class="risk-metric-label">{{ m.title }}</span>
+                                <Tag :value="MEASURE_STATUS[m.status]?.label ?? m.status" :severity="MEASURE_STATUS[m.status]?.severity ?? 'secondary'" />
+                            </li>
+                        </ul>
                         <p v-else-if="selected.value < 20" class="text-muted-color">Риск низкий (скор {{ selected.value }} из 100) — превентивные меры не требуются.</p>
                         <p v-else class="text-muted-color">Мер пока нет — сгенерируйте черновики.</p>
-                    </div>
+                    </RiskEntityCard>
                 </div>
             </div>
         </div>
 
         <div v-if="seasonSummary.length" class="col-span-12">
-            <div class="card mb-0">
-                <div class="flex items-center justify-between mb-2">
-                    <h5 class="m-0">Снегозапас марта по сезонам, % нормы (клик — переключить сезон)</h5>
-                    <span class="text-muted-color">ERA5-Land, медиана по НП региона</span>
-                </div>
-                <div style="height: 180px">
-                    <Chart type="bar" :data="chartData" :options="chartOptions" style="height: 100%" />
-                </div>
-            </div>
+            <SeasonalBarChart
+                title="Снегозапас марта по сезонам, % нормы (клик — переключить сезон)"
+                source="ERA5-Land, медиана по НП региона"
+                :labels="seasonSummary.map((s) => String(s.year))"
+                :values="seasonSummary.map((s) => s.sweMedianPctNorm)"
+                :active-label="season"
+                :color="HAZARD.color"
+                y-title="% нормы"
+                @select="season = $event"
+            />
         </div>
 
         <div class="col-span-12">
-            <div class="card mb-0">
-                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-                    <div class="flex items-center gap-3">
-                        <h5 class="m-0">Очередь превентивных мер</h5>
-                        <template v-if="selected">
-                            <Tag :value="`фильтр: ${selected.name}`" severity="info" />
-                            <Button label="Показать все" size="small" text @click="selected = null" />
-                        </template>
-                    </div>
-                    <span class="text-muted-color">Приоритет = скор риска × lg(население); решение принимает комиссия</span>
-                </div>
-                <DataTable :value="visibleMeasures" paginator :rows="10" size="small" sortField="priority" :sortOrder="-1" :loading="loading">
-                    <Column field="settlementName" header="НП" sortable />
-                    <Column header="Скор" style="width: 6rem">
-                        <template #body="{ data }">
-                            <Tag
-                                v-if="scoreBySettlement[data.settlementId] !== undefined"
-                                :value="scoreBySettlement[data.settlementId]"
-                                :severity="scoreBySettlement[data.settlementId] > 60 ? 'danger' : scoreBySettlement[data.settlementId] > 30 ? 'warn' : 'success'"
-                            />
-                            <span v-else class="text-muted-color">—</span>
-                        </template>
-                    </Column>
-                    <Column field="title" header="Мера" />
-                    <Column field="priority" header="Приоритет" sortable style="width: 8rem" />
-                    <Column field="status" header="Статус" sortable style="width: 10rem">
-                        <template #body="{ data }">
-                            <Tag :value="statusLabel[data.status]" :severity="statusSeverity[data.status]" />
-                        </template>
-                    </Column>
-                    <Column field="decidedByName" header="Решение принял" style="width: 12rem">
-                        <template #body="{ data }">
-                            <span v-if="data.decidedByName">{{ data.decidedByName }}</span>
-                            <span v-else class="text-muted-color">—</span>
-                        </template>
-                    </Column>
-                    <Column header="Действия" style="width: 12rem">
-                        <template #body="{ data }">
-                            <div v-if="data.status === 'Proposed'" class="flex gap-2">
-                                <Button label="Утвердить" size="small" severity="success" outlined @click="setStatus(data, 'Approved')" />
-                                <Button icon="pi pi-times" size="small" severity="danger" outlined @click="setStatus(data, 'Rejected')" />
-                            </div>
-                            <Button v-else-if="data.status === 'Approved'" label="Выполнено" size="small" severity="info" outlined @click="setStatus(data, 'Done')" />
-                        </template>
-                    </Column>
-                    <template #empty>
-                        <span v-if="selected">По «{{ selected.name }}» мер нет — скор {{ selected.value }} ниже порогов генерации или черновики ещё не создавались.</span>
-                        <span v-else>Очередь пуста — загрузите скоры и сгенерируйте черновики мер.</span>
+            <MeasuresQueue :measures="visibleMeasures" :loading="loading" entity-label="НП" :scores="scoreBySettlement" can-decide @set-status="setStatus">
+                <template #filter>
+                    <template v-if="selected">
+                        <Tag :value="`фильтр: ${selected.name}`" severity="info" />
+                        <Button label="Показать все" size="small" text @click="selected = null" />
                     </template>
-                </DataTable>
-            </div>
+                </template>
+                <template #empty>
+                    <span v-if="selected">По «{{ selected.name }}» мер нет — скор {{ selected.value }} ниже порогов генерации или черновики ещё не создавались.</span>
+                    <span v-else>Очередь пуста — загрузите скоры и сгенерируйте черновики мер.</span>
+                </template>
+            </MeasuresQueue>
         </div>
     </div>
 </template>
