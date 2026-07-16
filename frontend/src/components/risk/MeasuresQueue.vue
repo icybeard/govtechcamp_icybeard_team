@@ -16,7 +16,8 @@ defineProps({
     loading: { type: Boolean, default: false },
     entityLabel: { type: String, default: 'НП' }, // заголовок первой колонки: 'НП' | 'Район'
     scores: { type: Object, default: () => ({}) }, // settlementId -> скор 0–100
-    canDecide: { type: Boolean, default: false } // показывать ли кнопки решений комиссии
+    canDecide: { type: Boolean, default: false }, // показывать ли кнопки решений комиссии
+    priorityHint: { type: String, default: 'Приоритет = скор риска × lg(население); решение принимает комиссия' }
 });
 // explain — клик по строке или иконке «i»: страница открывает диалог
 // «Почему рекомендовано» (объяснимость рекомендации)
@@ -30,7 +31,7 @@ defineEmits(['set-status', 'explain']);
                 <h5 class="m-0">Очередь превентивных мер</h5>
                 <slot name="filter" />
             </div>
-            <span class="text-muted-color">Приоритет = скор риска × lg(население); решение принимает комиссия</span>
+            <span class="text-muted-color">{{ priorityHint }}</span>
         </div>
         <DataTable :value="measures" paginator :rows="10" size="small" sortField="priority" :sortOrder="-1" :loading="loading" rowHover class="measures-table" @row-click="$emit('explain', $event.data)">
             <Column field="settlementName" :header="entityLabel" sortable />

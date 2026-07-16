@@ -5,16 +5,21 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GovTech.Api.Modules;
 
-public record MeasureDto(long Id, int SettlementId, string SettlementName, string Module, string Title,
-    string? Description, string Status, double Priority, string? DecidedByName, DateTimeOffset? DecidedAt, string? Note);
+public record MeasureDto(long Id, int? SettlementId, string SettlementName, string Module, string Title,
+    string? Description, string Status, double Priority, string? DecidedByName, DateTimeOffset? DecidedAt, string? Note,
+    string? DistrictId, string? DistrictName);
 
 public record CreateMeasureRequest(int SettlementId, string Module, string Title, string? Description);
-public record GenerateMeasuresRequest(string Module, string MetricKey, string? Period);
+
+/// <summary>Скор района для генерации district-мер: районов в БД нет, значения приходят с фронта (ML/статические JSON).</summary>
+public record DistrictScore(double Value, string Name);
+public record GenerateMeasuresRequest(string Module, string MetricKey, string? Period, Dictionary<string, DistrictScore>? DistrictValues);
 public record ChangeMeasureStatusRequest(string Status, string? Note);
 
 public static class MeasureEndpoints
 {
-    // Правила генерации черновиков для модуля паводков: порог скора → мера.
+    // Правила генерации черновиков: порог скора → мера. Копия для отображения —
+    // frontend/src/config/measureRules.js (синхронизировать при изменении).
     private static readonly (double MinScore, string Title)[] FloodRules =
     [
         (70, "Обследование дамб и водопропускных сооружений"),
@@ -23,13 +28,33 @@ public static class MeasureEndpoints
         (20, "Усиленный мониторинг снегозапаса и уровня воды")
     ];
 
+    // Пожары и зима — district-модули (ADM2): скоры приходят с фронта в DistrictValues
+    private static readonly Dictionary<string, (double MinScore, string Title)[]> DistrictRules = new()
+    {
+        ["fire-risk"] =
+        [
+            (70, "Запрет на посещение лесов и противопожарный режим"),
+            (60, "Усиленное патрулирование лесхозов и рейды"),
+            (40, "Проверка минерализованных полос и опашка"),
+            (20, "Информирование населения о пожарной опасности")
+        ],
+        ["winter-risk"] =
+        [
+            (60, "Резерв техники и ГСМ для расчистки дорог"),
+            (50, "Пункты обогрева на трассах и план эвакуации"),
+            (35, "Обработка дорог противогололёдными материалами"),
+            (20, "Проверка снеговой нагрузки на кровлях соцобъектов")
+        ]
+    };
+
     public static void MapMeasureEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/measures").WithTags("Measures").RequireAuthorization();
 
         static MeasureDto ToDto(PreventiveMeasure m) => new(
             m.Id, m.SettlementId, m.Settlement?.Name ?? "", m.Module, m.Title,
-            m.Description, m.Status, m.Priority, m.DecidedByName, m.DecidedAt, m.Note);
+            m.Description, m.Status, m.Priority, m.DecidedByName, m.DecidedAt, m.Note,
+            m.DistrictId, m.DistrictName);
 
         // Очередь мер: по умолчанию по убыванию приоритета
         group.MapGet("/", async (string? module, string? status, int? settlementId, AppDbContext db) =>
@@ -73,11 +98,16 @@ public static class MeasureEndpoints
             return Results.Ok(ToDto(measure));
         });
 
-        // Генерация черновиков по правилам из текущих скоров (Admin)
+        // Генерация черновиков по правилам из текущих скоров (Admin).
+        // flood-risk — по метрикам НП из БД; fire-risk/winter-risk — по скорам
+        // районов из запроса (ML-прогноз / сезонный JSON, районов в БД нет).
         group.MapPost("/generate", async (GenerateMeasuresRequest request, AppDbContext db) =>
         {
+            if (DistrictRules.TryGetValue(request.Module, out var districtRules))
+                return await GenerateDistrictMeasures(request, districtRules, db);
+
             if (request.Module != "flood-risk")
-                return Results.BadRequest(new { error = "Генерация пока реализована только для module=flood-risk" });
+                return Results.BadRequest(new { error = "Генерация поддерживает module=flood-risk, fire-risk, winter-risk" });
 
             var period = request.Period ?? "";
             var scores = await db.SettlementMetrics
@@ -137,6 +167,46 @@ public static class MeasureEndpoints
             await db.SaveChangesAsync();
             return Results.Ok(ToDto(measure));
         });
+    }
+
+    /// <summary>Черновики district-мер: тот же порог-дедуп-цикл, что у паводков,
+    /// но объект — район (shapeID), приоритет — сам скор (население района неизвестно).</summary>
+    private static async Task<IResult> GenerateDistrictMeasures(
+        GenerateMeasuresRequest request, (double MinScore, string Title)[] rules, AppDbContext db)
+    {
+        if (request.DistrictValues is null || request.DistrictValues.Count == 0)
+            return Results.BadRequest(new { error = "Для district-модулей нужен districtValues: { shapeID: { value, name } }" });
+
+        var existing = await db.PreventiveMeasures
+            .Where(m => m.Module == request.Module && m.Status != MeasureStatus.Rejected && m.DistrictId != null)
+            .Select(m => new { m.DistrictId, m.Title })
+            .ToListAsync();
+        var existingKeys = existing.Select(e => (e.DistrictId!, e.Title)).ToHashSet();
+
+        var seasonSuffix = string.IsNullOrEmpty(request.Period) ? "" : $", сезон {request.Period}";
+        var created = 0;
+        foreach (var (districtId, score) in request.DistrictValues)
+        {
+            if (string.IsNullOrWhiteSpace(districtId) || string.IsNullOrWhiteSpace(score.Name)) continue;
+            foreach (var (minScore, title) in rules)
+            {
+                if (score.Value < minScore || existingKeys.Contains((districtId, title))) continue;
+                db.PreventiveMeasures.Add(new PreventiveMeasure
+                {
+                    DistrictId = districtId,
+                    DistrictName = score.Name.Trim(),
+                    Module = request.Module,
+                    Title = title,
+                    Description = $"Черновик по правилу «скор ≥ {minScore}» (скор {score.Value:F0}{seasonSuffix})",
+                    Priority = Math.Round(score.Value, 1)
+                });
+                existingKeys.Add((districtId, title));
+                created++;
+            }
+        }
+
+        await db.SaveChangesAsync();
+        return Results.Ok(new { created });
     }
 
     /// <summary>Скор × lg(население): «Петропавловск 70» важнее «разъезд 90».</summary>
