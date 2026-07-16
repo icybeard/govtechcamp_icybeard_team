@@ -75,7 +75,9 @@ const liveWeather = ref(true);
 const regionWeather = ref({});
 const weatherUpdatedAt = ref(null);
 const windGrid = ref(null);
-const tileOverlays = gibsOverlays();
+// Слои GIBS следуют выбранному сезону: середина марта — максимум снегозапаса
+// перед таянием; снимок/снег/осадки показывают обстановку именно того года
+const tileOverlays = computed(() => gibsOverlays(`${season.value}-03-15`));
 
 const weatherMarkers = computed(() =>
     liveWeather.value

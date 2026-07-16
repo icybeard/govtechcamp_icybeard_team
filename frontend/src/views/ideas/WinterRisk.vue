@@ -36,7 +36,9 @@ const seasonOptions = Array.from({ length: 7 }, (_, i) => String(2026 - i)).map(
     value: y
 }));
 
-const tileOverlays = gibsOverlays(); // снежный покров/снимок — те же слои GIBS
+// Слои GIBS следуют выбранному сезону: середина февраля года Y — разгар зимы (Y-1)–Y,
+// снежный покров и снимок показывают именно ту зиму
+const tileOverlays = computed(() => gibsOverlays(`${season.value}-02-15`));
 
 const loading = ref(true);
 const error = ref(null);
