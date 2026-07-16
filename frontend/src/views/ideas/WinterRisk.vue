@@ -169,9 +169,9 @@ function openExplain(measure) {
                     <Tag v-else-if="hasData" :value="`Районов со скорами: ${Object.keys(regionValues).length}`" severity="success" />
                     <Tag v-else value="данные не загружены" severity="warn" />
 
-                    <div style="margin-left: auto">
-                        <GranularitySwitcher :model-value="GRANULARITY" :supports-region="true" :supports-np="false" />
-                    </div>
+                </template>
+                <template #actions>
+                    <GranularitySwitcher :model-value="GRANULARITY" :supports-region="true" :supports-np="false" />
                 </template>
                 <template #messages>
                     <Message v-if="error" severity="error" :closable="false" class="mt-4">{{ error }}</Message>

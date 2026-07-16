@@ -35,7 +35,14 @@ const mode = computed({
             <div class="risk-header-card__title">{{ title }}</div>
             <div v-if="description" class="risk-header-card__description">{{ description }}</div>
             <div class="risk-header-card__controls">
-                <slot name="controls" />
+                <div class="risk-header-card__controls-main">
+                    <slot name="controls" />
+                </div>
+                <!-- правый блок (переключатель детализации) не участвует в переносе
+                     основного ряда — иначе на тесной ширине «съезжает» на вторую строку -->
+                <div v-if="$slots.actions" class="risk-header-card__controls-actions">
+                    <slot name="actions" />
+                </div>
             </div>
             <slot name="messages" />
         </div>
@@ -66,8 +73,22 @@ const mode = computed({
 }
 .risk-header-card__controls {
     display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+/* main сжимается и переносится внутри себя ПЕРВЫМ (flex:1 + min-width:0),
+   actions держится справа и уходит на новую строку только в крайнем случае */
+.risk-header-card__controls-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
     align-items: center;
     gap: 14px;
     flex-wrap: wrap;
+}
+.risk-header-card__controls-actions {
+    flex-shrink: 0;
+    margin-left: auto;
 }
 </style>

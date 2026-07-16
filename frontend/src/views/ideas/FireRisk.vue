@@ -253,9 +253,9 @@ function openExplain(measure) {
                     <Tag v-if="hotspots.length" :value="`очагов за 24 ч: ${hotspots.length}`" severity="danger" />
                     <Tag v-else-if="!hotspotsError" value="очагов нет" severity="success" />
 
-                    <div style="margin-left: auto">
-                        <GranularitySwitcher :model-value="GRANULARITY" :supports-region="true" :supports-np="false" />
-                    </div>
+                </template>
+                <template #actions>
+                    <GranularitySwitcher :model-value="GRANULARITY" :supports-region="true" :supports-np="false" />
                 </template>
                 <template #messages>
                     <Message v-if="error" severity="error" :closable="false" class="mt-4">{{ error }}</Message>

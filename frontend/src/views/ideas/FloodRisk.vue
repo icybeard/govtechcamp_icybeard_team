@@ -215,7 +215,9 @@ async function setStatus(measure, status) {
                     <Tag v-if="points.length" :value="`НП со скорами: ${points.length}`" severity="success" />
                     <Tag v-else value="данные не загружены" severity="warn" />
 
-                    <div class="flex items-center gap-3 flex-wrap" style="margin-left: auto">
+                </template>
+                <template #actions>
+                    <div class="flex items-center gap-3 flex-wrap justify-end">
                         <GranularitySwitcher :model-value="GRANULARITY" :supports-region="false" :supports-np="true" />
                         <Button v-if="isAdmin && points.length" label="Сгенерировать черновики мер" severity="contrast" size="small" :loading="generating" @click="generateMeasures" />
                     </div>
