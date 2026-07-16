@@ -10,6 +10,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Settlement> Settlements => Set<Settlement>();
     public DbSet<SettlementMetric> SettlementMetrics => Set<SettlementMetric>();
     public DbSet<PreventiveMeasure> PreventiveMeasures => Set<PreventiveMeasure>();
+    public DbSet<DatasetFile> DatasetFiles => Set<DatasetFile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -67,6 +68,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(m => m.DistrictId).HasMaxLength(100);
             e.Property(m => m.DistrictName).HasMaxLength(300);
             e.HasOne(m => m.Settlement).WithMany().HasForeignKey(m => m.SettlementId);
+        });
+
+        modelBuilder.Entity<DatasetFile>(e =>
+        {
+            e.HasIndex(d => d.UploadedAt);
+            e.Property(d => d.FileName).HasMaxLength(300);
+            e.Property(d => d.Kind).HasMaxLength(50);
+            e.Property(d => d.Period).HasMaxLength(20);
+            e.Property(d => d.Note).HasMaxLength(1000);
+            e.Property(d => d.StoredPath).HasMaxLength(500);
+            e.Property(d => d.UploadedByName).HasMaxLength(200);
         });
     }
 }

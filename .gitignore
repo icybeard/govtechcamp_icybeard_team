@@ -40,3 +40,6 @@ appsettings.*.local.json
 !data/processed/
 !data/processed/features_*.csv
 !data/processed/scores_*.csv
+
+# загрузки страницы «Данные» (локальный запуск API)
+backend/src/Api/data/uploads/

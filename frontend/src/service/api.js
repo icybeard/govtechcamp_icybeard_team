@@ -43,9 +43,30 @@ async function request(method, path, body) {
     return payload;
 }
 
+// multipart-загрузка (страница «Данные»): Content-Type выставляет браузер
+// (boundary), поэтому JSON-обёртка request() не подходит
+async function upload(path, formData) {
+    const headers = {};
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const response = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body: formData });
+    let payload = null;
+    try {
+        payload = await response.json();
+    } catch {
+        /* empty body */
+    }
+    if (!response.ok) {
+        throw new ApiError(response.status, payload?.error ?? `Request failed (${response.status})`);
+    }
+    return payload;
+}
+
 export const api = {
     get: (path) => request('GET', path),
     post: (path, body) => request('POST', path, body),
     put: (path, body) => request('PUT', path, body),
-    delete: (path) => request('DELETE', path)
+    delete: (path) => request('DELETE', path),
+    upload
 };

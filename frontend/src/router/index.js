@@ -19,6 +19,11 @@ const router = createRouter({
                     name: 'risks',
                     component: () => import('@/views/RisksCenter.vue')
                 },
+                {
+                    path: '/data',
+                    name: 'data-center',
+                    component: () => import('@/views/DataCenter.vue')
+                },
                 // старые пути — редиректы в единую страницу с нужным режимом
                 { path: '/risks/flood', redirect: { path: '/risks', query: { mode: 'flood' } } },
                 { path: '/risks/fire', redirect: { path: '/risks', query: { mode: 'fire' } } },

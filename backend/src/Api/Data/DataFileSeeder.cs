@@ -32,7 +32,7 @@ public static class DataFileSeeder
 
         // НП: upsert по имени (тёзки схлопываются — как в scripts/load_settlements.py)
         var byName = new Dictionary<string, Settlement>();
-        foreach (var row in ReadCsv(settlementsCsv).Skip(1))
+        foreach (var row in CsvFile.Read(settlementsCsv).Skip(1))
         {
             if (row.Length < 4 || string.IsNullOrWhiteSpace(row[0])) continue;
             var name = row[0].Trim();
@@ -61,7 +61,7 @@ public static class DataFileSeeder
 
         foreach (var (file, period) in scoreFiles)
         {
-            foreach (var row in ReadCsv(file).Skip(1))
+            foreach (var row in CsvFile.Read(file).Skip(1))
             {
                 if (row.Length < 5 || !byName.TryGetValue(row[0].Trim(), out var settlement)) continue;
                 db.SettlementMetrics.Add(new SettlementMetric
@@ -84,7 +84,7 @@ public static class DataFileSeeder
         if (File.Exists(winterCsv))
         {
             var regionsByIso = await db.Regions.ToDictionaryAsync(r => r.IsoCode);
-            var winterRows = ReadCsv(winterCsv).ToList();
+            var winterRows = CsvFile.Read(winterCsv).ToList();
             if (winterRows.Count > 1)
             {
                 var header = winterRows[0];
@@ -135,30 +135,4 @@ public static class DataFileSeeder
         return (null, null);
     }
 
-    /// <summary>Минимальный CSV-парсер с поддержкой кавычек ("" — экранирование) — factors_json содержит запятые.</summary>
-    private static IEnumerable<string[]> ReadCsv(string path)
-    {
-        foreach (var line in File.ReadLines(path))
-        {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            var fields = new List<string>();
-            var current = new System.Text.StringBuilder();
-            var inQuotes = false;
-            for (var i = 0; i < line.Length; i++)
-            {
-                var c = line[i];
-                if (inQuotes)
-                {
-                    if (c == '"' && i + 1 < line.Length && line[i + 1] == '"') { current.Append('"'); i++; }
-                    else if (c == '"') inQuotes = false;
-                    else current.Append(c);
-                }
-                else if (c == '"') inQuotes = true;
-                else if (c == ',') { fields.Add(current.ToString()); current.Clear(); }
-                else current.Append(c);
-            }
-            fields.Add(current.ToString());
-            yield return fields.ToArray();
-        }
-    }
 }

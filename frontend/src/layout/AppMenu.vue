@@ -20,6 +20,11 @@ const model = ref([
                 label: 'Ситуационная карта',
                 icon: 'pi pi-fw pi-map',
                 to: '/risks'
+            },
+            {
+                label: 'Данные',
+                icon: 'pi pi-fw pi-database',
+                to: '/data'
             }
         ]
     },
