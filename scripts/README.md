@@ -1,14 +1,25 @@
 # Скрипты
 
-Запуск стека — через `make up` в корне репозитория (см. Makefile), отдельного скрипта нет.
+Запуск стека — `docker compose up --build` или `make up` (см. Makefile); данные пилота сидируются автоматически.
 
-Скрипты (только стандартная библиотека Python, без pip):
+Все скрипты — только стандартная библиотека Python (кроме отмеченных venv):
 
-- `download_settlements.py <ISO> <out.csv>` — населённые пункты региона из OSM Overpass (имя, координаты, население). Принимает коды приложения (`KZ-SEV`), внутри маппит на новые OSM-коды (`KZ-59`).
-- `load_settlements.py <ISO> <in.csv> [api-url]` — импорт CSV в API (`POST /api/settlements/import`), логин суперпользователем из `.env`.
-- `compute_terrain_features.py <ISO> <settlements.csv> <features.csv>` — признаки рельефа: реки из OSM, высоты из Copernicus DEM (Open-Meteo Elevation API); выдаёт высоту, расстояние до реки и превышение над рекой.
-- `load_scores.py <ISO> <scores.csv> [api-url]` — скоры + факторы «почему» в API (`PUT /api/settlements/metrics`); матчит по имени и координатам.
+**Паводки (И-6):**
+- `download_settlements.py <ISO> <out.csv>` — НП региона из OSM Overpass
+- `load_settlements.py <ISO> <in.csv> [api-url]` — импорт НП в API
+- `compute_terrain_features.py <ISO> <settlements.csv> <features.csv>` — рельеф: реки OSM + Copernicus DEM
+- `download_era5.py [out.zip]` *(venv: cdsapi)* — ERA5-Land monthly, нужен ключ CDS
+- `compute_era5_features.py <nc> <in.csv> <out.csv>` *(venv: netCDF4)* — снегозапас/осадки в % нормы
+- `compute_season_features.py <nc> <base.csv> <out_dir> <от> <до>` *(venv)* — сезонные признаки + сводка для графика
+- `build_labels.py <positives.csv> <settlements.csv> <labels.csv>` — разметка-2024 из позитивов СМИ
+- `load_scores.py <ISO> <scores.csv> [api-url] [--period YYYY]` — скоры + факторы в API
 
-Полный пайплайн И-6 — см. [ml/i6-flood-risk/README.md](../ml/i6-flood-risk/README.md).
+**Пожары:**
+- `fire_history.py` — исторические очаги FIRMS (июли 2021–2025) → приор районов `fire-history.json`
+- дневная ML-модель — см. [ml/i9-fire-risk/](../ml/i9-fire-risk/) (`fetch/train/today`; `make fire-today`)
 
-Дальше сюда: Sentinel-1 (разметка затоплений), ERA5 (снегозапас, нужен ключ CDS), FIRMS/NDVI для И-9. Один скрипт — одна задача.
+**Зима:**
+- `winter_fetch.py [от] [до]` — зимние индексы по 16 областям → CSV (сеется в БД)
+- `winter_fetch_districts.py [от] [до]` — то же по 174 районам → `winter-districts.json` (использует страница)
+
+Полный пайплайн паводков: [ml/i6-flood-risk/README.md](../ml/i6-flood-risk/README.md). Один скрипт — одна задача.
