@@ -17,19 +17,9 @@ const model = ref([
         label: 'Природные риски',
         items: [
             {
-                label: 'Паводковый риск · СКО',
-                icon: 'pi pi-fw pi-cloud',
-                to: '/risks/flood'
-            },
-            {
-                label: 'Пожарная обстановка · live',
-                icon: 'pi pi-fw pi-sun',
-                to: '/risks/fire'
-            },
-            {
-                label: 'Зимняя обстановка',
-                icon: 'pi pi-fw pi-asterisk',
-                to: '/risks/winter'
+                label: 'Ситуационная карта',
+                icon: 'pi pi-fw pi-map',
+                to: '/risks'
             }
         ]
     },

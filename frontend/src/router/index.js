@@ -15,23 +15,16 @@ const router = createRouter({
                     component: () => import('@/views/Dashboard.vue')
                 },
                 {
-                    path: '/risks/flood',
-                    name: 'flood-risk',
-                    component: () => import('@/views/ideas/FloodRisk.vue')
+                    path: '/risks',
+                    name: 'risks',
+                    component: () => import('@/views/RisksCenter.vue')
                 },
-                {
-                    path: '/risks/fire',
-                    name: 'fire-risk',
-                    component: () => import('@/views/ideas/FireRisk.vue')
-                },
-                {
-                    path: '/risks/winter',
-                    name: 'winter-risk',
-                    component: () => import('@/views/ideas/WinterRisk.vue')
-                },
-                // старые пути — редирект, чтобы не ломать закладки
-                { path: '/ideas/flood-risk', redirect: '/risks/flood' },
-                { path: '/ideas/fire-risk', redirect: '/risks/fire' },
+                // старые пути — редиректы в единую страницу с нужным режимом
+                { path: '/risks/flood', redirect: { path: '/risks', query: { mode: 'flood' } } },
+                { path: '/risks/fire', redirect: { path: '/risks', query: { mode: 'fire' } } },
+                { path: '/risks/winter', redirect: { path: '/risks', query: { mode: 'winter' } } },
+                { path: '/ideas/flood-risk', redirect: { path: '/risks', query: { mode: 'flood' } } },
+                { path: '/ideas/fire-risk', redirect: { path: '/risks', query: { mode: 'fire' } } },
                 {
                     path: '/account/settings',
                     name: 'account-settings',
