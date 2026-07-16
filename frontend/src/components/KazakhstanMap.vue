@@ -188,7 +188,7 @@ async function initMap() {
         const overlays = Object.fromEntries(
             props.tileOverlays.map((t) => [
                 t.name,
-                L.tileLayer(t.url, { pane: 'weatherTiles', opacity: t.opacity ?? 1, maxNativeZoom: t.maxNativeZoom, maxZoom: 12, attribution: t.attribution })
+                L.tileLayer(t.url, { pane: t.pane ?? 'weatherTiles', opacity: t.opacity ?? 1, maxNativeZoom: t.maxNativeZoom, maxZoom: 12, attribution: t.attribution })
             ])
         );
         L.control.layers(null, overlays, { position: 'topleft', collapsed: true }).addTo(map);

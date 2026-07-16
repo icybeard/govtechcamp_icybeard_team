@@ -16,6 +16,9 @@ export function gibsOverlays() {
             url: `${BASE}/VIIRS_NOAA20_CorrectedReflectance_TrueColor/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`,
             opacity: 1,
             maxNativeZoom: 9,
+            // непрозрачная подложка — рисуем в базовой тайловой панели, ПОД хороплетом,
+            // иначе накрывает всю карту
+            pane: 'tilePane',
             attribution: ATTRIBUTION
         },
         {
