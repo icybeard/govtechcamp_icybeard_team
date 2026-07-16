@@ -18,6 +18,45 @@ const KINDS = [
     { value: 'training-raw', label: 'Сырые данные для обучения', hint: 'CSV/JSON — реестр для переобучения моделей', ingest: false }
 ];
 
+// Шаблоны форматов, которые принимает бэкенд/офлайн-пайплайн: генерируются
+// на клиенте (Blob). В CSV — BOM, чтобы Excel открывал кириллицу как UTF-8;
+// бэкенд-парсер BOM отбрасывает автоматически (StreamReader). Для training-raw
+// шаблона нет — формат свободный.
+const BOM = '﻿';
+const TEMPLATES = {
+    'flood-scores': {
+        file: 'template-flood-scores.csv',
+        mime: 'text/csv',
+        content: `${BOM}name,lat,lon,score,factors_json\nПетропавловск,54.8666,69.1361,63.4,"[{""name"":""Снегозапас 132% нормы"",""impact"":0.31}]"\nБесколь,54.7942,69.1279,41.0,\n`
+    },
+    settlements: {
+        file: 'template-settlements.csv',
+        mime: 'text/csv',
+        content: `${BOM}name,lat,lon,population\nПетропавловск,54.8666,69.1361,222703\nБесколь,54.7942,69.1279,10586\n`
+    },
+    'fire-ml': {
+        file: 'template-fire-ml-today.json',
+        mime: 'application/json',
+        content: JSON.stringify({ generatedAt: '2026-07-16T00:01+00:00', values: { '<shapeID района из kz-districts.geojson>': 57 } }, null, 2)
+    },
+    'winter-districts': {
+        file: 'template-winter-districts.json',
+        mime: 'application/json',
+        content: JSON.stringify({ 2026: { '<shapeID района из kz-districts.geojson>': { risk: 41, glaze: 55, blizzard: 30, snowload: 38, cold: 25 } } }, null, 2)
+    }
+};
+
+function downloadTemplate() {
+    const template = TEMPLATES[kind.value];
+    if (!template) return;
+    const url = URL.createObjectURL(new Blob([template.content], { type: template.mime }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = template.file;
+    link.click();
+    URL.revokeObjectURL(url);
+}
+
 const toast = useToast();
 
 const files = ref([]);
@@ -122,6 +161,7 @@ async function removeFile(row) {
                 <div class="flex flex-wrap items-center gap-4 mt-4">
                     <input ref="fileInput" type="file" accept=".csv,.json" @change="onFilePick" />
                     <Button label="Загрузить" icon="pi pi-upload" :disabled="!selectedFile" :loading="uploading" @click="uploadFile" />
+                    <Button v-if="TEMPLATES[kind]" label="Скачать шаблон" icon="pi pi-download" text @click="downloadTemplate" />
                 </div>
                 <Message severity="secondary" :closable="false" class="mt-4">{{ kindMeta.hint }}. Файлы .csv/.json до 50 МБ.</Message>
             </div>
