@@ -1,0 +1,57 @@
+# Продовый деплой на VM (dc.jurek.kz) — самостоятельный файл, НЕ оверлей:
+# compose мерджит списки ports, поэтому «убрать порт» оверлеем нельзя.
+# Отличия от docker-compose.yml: db и api не публикуют порты вовсе, web — только
+# на loopback (TLS терминирует хостовый Caddy → reverse_proxy 127.0.0.1:5173),
+# у всех restart: unless-stopped. Секреты — из /srv/govtech-camp/.env.
+# Запуск: docker compose -f docker-compose.prod.yml up -d --build
+services:
+  db:
+    image: imresamu/postgis:16-3.4
+    container_name: govtech-db
+    environment:
+      POSTGRES_USER: govtech
+      POSTGRES_PASSWORD: govtech
+      POSTGRES_DB: govtech
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/seed:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U govtech"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: govtech-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: Host=db;Port=5432;Database=govtech;Username=govtech;Password=govtech
+      Jwt__Key: ${JWT_KEY:?prod requires a real JWT_KEY in .env}
+      Seed__AdminEmail: ${SEED_ADMIN_EMAIL:-admin@icybeard.local}
+      Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:-ChangeMe123!}
+      Firms__MapKey: ${FIRMS_MAP_KEY:-}
+      Cors__Origins: https://dc.jurek.kz
+      Datasets__Path: /app/data/uploads
+    volumes:
+      - uploads:/app/data/uploads
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    container_name: govtech-web
+    ports:
+      - "127.0.0.1:5173:80"
+    restart: unless-stopped
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  uploads:
