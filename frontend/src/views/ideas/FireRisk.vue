@@ -45,9 +45,11 @@ const fireHistory = ref({});
 // ML-прогноз на сегодня (LightGBM, ml/i9-fire-risk/fire_ml.py today) —
 // отдельный режим карты + строка в карточке района
 const mlToday = ref(null); // { generatedAt, values: {shapeID: 0-100} }
+// «Индекс» — прозрачная формула (метео-индекс + история FIRMS), подпись едина
+// с зимним контуром: везде пара «Индекс | ML-прогноз»
 const mode = ref('composite');
 const modeOptions = computed(() => [
-    { label: 'Композит', value: 'composite' },
+    { label: 'Индекс', value: 'composite' },
     { label: 'ML-прогноз', value: 'ml', disabled: !mlToday.value }
 ]);
 
@@ -149,7 +151,7 @@ function onRegionClick(region) {
 <template>
     <div class="grid grid-cols-12 gap-4">
         <div class="col-span-12">
-            <RiskHeaderCard title="Риск-скоринг природных пожаров" description="Риск возникновения очагов возгорания по метеоданным (Open-Meteo) и истории NASA FIRMS. Все районы Казахстана, очаги за 24 ч, обновление раз в час.">
+            <RiskHeaderCard title="Риск-скоринг природных пожаров" description="Все районы Казахстана, очаги за 24 ч, обновление раз в час. Режимы: «Индекс» — прозрачная формула (метео сейчас + историческая частота очагов NASA FIRMS), «ML-прогноз» — дневная LightGBM-модель на сегодня.">
                 <template #controls>
                     <SelectButton v-model="mode" :options="modeOptions" optionLabel="label" optionValue="value" optionDisabled="disabled" size="small" />
                     <Tag v-if="mode === 'ml' && mlToday" :value="`прогноз от ${mlToday.generatedAt.slice(11, 16)} UTC`" severity="info" />

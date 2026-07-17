@@ -1,5 +1,6 @@
 # Datasets — describe sources in docs/data/, don't commit binaries
-data/raw/
+# (исключаем содержимое, а не папку: иначе git игнорирует и «!»-исключения ниже)
+data/raw/*
 data/processed/
 *.tif
 *.tiff
@@ -40,3 +41,8 @@ appsettings.*.local.json
 !data/processed/
 !data/processed/features_*.csv
 !data/processed/scores_*.csv
+# Зимний ML: датасет и модель — чтобы train/seasons воспроизводились без выкачивания
+# (сырые кэши data/raw/storm_archive/ и data/raw/winter_daily/ не коммитим)
+!data/raw/winter_storm_warnings.csv
+!data/processed/winter_daily_features.csv
+!data/processed/winter_lgbm.txt

@@ -51,6 +51,19 @@ frontend:
 fire-today:
 	.venv/bin/python ml/i9-fire-risk/fire_ml.py today
 
+## make winter-ml — зимний ML целиком: данные (ERA5 + архив Казгидромета) → обучение →
+## ретроспектива сезонов для фронтенда. Один раз, результат коммитится (как скоры паводков):
+## frontend/public/data/winter-ml-seasons.json + data/processed/winter_lgbm.txt + metrics.json
+winter-ml:
+	python3 scripts/winter_fetch_daily.py 2020 2026
+	python3 scripts/winter_labels_storm_archive.py 2020 2026
+	.venv/bin/python ml/i-winter-risk/winter_ml.py train
+	.venv/bin/python ml/i-winter-risk/winter_ml.py seasons
+
+## make winter-today — зимний ML-прогноз на сегодня (Open-Meteo; аналог fire-today)
+winter-today:
+	.venv/bin/python ml/i-winter-risk/winter_ml.py today
+
 ## make build — проверить, что всё собирается локально
 build:
 	cd backend && dotnet build

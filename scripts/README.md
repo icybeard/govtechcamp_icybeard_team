@@ -21,5 +21,8 @@
 **Зима:**
 - `winter_fetch.py [от] [до]` — зимние индексы по 16 областям → CSV (сеется в БД)
 - `winter_fetch_districts.py [от] [до]` — то же по 174 районам → `winter-districts.json` (использует страница)
+- `winter_fetch_daily.py [от] [до]` — дневные ERA5-фичи «район×день» для ML → `winter_daily_features.csv` (кэш+resume; `winter_fetch_retry.bat` — докачка до победы при лимитах Open-Meteo)
+- `winter_labels_storm_archive.py [от] [до]` — разметка: архив штормовых предупреждений Казгидромета (`ajax_storm.php`) → `winter_storm_warnings.csv`
+- зимняя ML-модель — см. [ml/i-winter-risk/](../ml/i-winter-risk/) (`train/seasons/today`; `make winter-ml`, `make winter-today`)
 
 Полный пайплайн паводков: [ml/i6-flood-risk/README.md](../ml/i6-flood-risk/README.md). Один скрипт — одна задача.
