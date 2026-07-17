@@ -1,6 +1,8 @@
 <script setup>
 import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
 import { MEASURE_STATUS } from '@/config/measureStatus';
+import { ruDistrictName } from '@/utils/districtNames';
+import { computed, ref } from 'vue';
 
 /**
  * Очередь превентивных мер — по макету: заголовок, пояснение приоритета,
@@ -11,7 +13,7 @@ import { MEASURE_STATUS } from '@/config/measureStatus';
  * Решения (утвердить/отклонить/выполнено) уходят наружу событием set-status —
  * компонент не знает про API.
  */
-defineProps({
+const props = defineProps({
     measures: { type: Array, required: true },
     loading: { type: Boolean, default: false },
     entityLabel: { type: String, default: 'НП' }, // заголовок первой колонки: 'НП' | 'Район'
@@ -22,6 +24,28 @@ defineProps({
 // explain — клик по строке или иконке «i»: страница открывает диалог
 // «Почему рекомендовано» (объяснимость рекомендации)
 defineEmits(['set-status', 'explain']);
+
+// Фильтры аналитика: поиск по НП/району (ищет и по латинице, и по переводу),
+// мера и статус — селекты с очисткой. Чисто отображение, данные не трогаем.
+const search = ref('');
+const titleFilter = ref(null);
+const statusFilter = ref(null);
+
+const titleOptions = computed(() => [...new Set(props.measures.map((m) => m.title))].sort().map((t) => ({ label: t, value: t })));
+const statusOptions = Object.entries(MEASURE_STATUS).map(([value, s]) => ({ label: s.label, value }));
+
+const filteredMeasures = computed(() =>
+    props.measures.filter((m) => {
+        if (titleFilter.value && m.title !== titleFilter.value) return false;
+        if (statusFilter.value && m.status !== statusFilter.value) return false;
+        if (search.value) {
+            const query = search.value.toLowerCase();
+            const name = m.settlementName || m.districtName || '';
+            if (!name.toLowerCase().includes(query) && !ruDistrictName(name).toLowerCase().includes(query)) return false;
+        }
+        return true;
+    })
+);
 </script>
 
 <template>
@@ -35,8 +59,18 @@ defineEmits(['set-status', 'explain']);
                 <slot name="filter" />
             </div>
         </div>
-        <DataTable :value="measures" paginator :rows="10" size="small" sortField="priority" :sortOrder="-1" :loading="loading" rowHover class="measures-table" @row-click="$emit('explain', $event.data)">
-            <Column field="settlementName" :header="entityLabel" sortable />
+        <div class="measures-filters">
+            <InputText v-model="search" :placeholder="`Поиск: ${entityLabel}`" size="small" style="width: 220px" />
+            <div class="measures-filters__right">
+                <Select v-model="titleFilter" :options="titleOptions" optionLabel="label" optionValue="value" placeholder="Мера" showClear size="small" style="min-width: 220px" />
+                <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value" placeholder="Статус" showClear size="small" style="min-width: 150px" />
+            </div>
+        </div>
+        <DataTable :value="filteredMeasures" paginator :rows="10" size="small" sortField="priority" :sortOrder="-1" :loading="loading" rowHover class="measures-table" @row-click="$emit('explain', $event.data)">
+            <Column field="settlementName" :header="entityLabel" sortable>
+                <!-- старые записи в БД — латиницей из geojson, переводим при отображении -->
+                <template #body="{ data }">{{ ruDistrictName(data.settlementName || data.districtName || '—') }}</template>
+            </Column>
             <Column header="Скор" style="width: 6rem">
                 <template #body="{ data }">
                     <RiskScoreBadge :score="scores[data.settlementId]" />
@@ -93,6 +127,20 @@ defineEmits(['set-status', 'explain']);
     font-size: 12px;
 }
 .measures-head__actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.measures-filters {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+.measures-filters__right {
     display: flex;
     align-items: center;
     gap: 10px;
