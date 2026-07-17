@@ -5,9 +5,11 @@ import LayersDatePicker from '@/components/risk/LayersDatePicker.vue';
 import MapHintBadge from '@/components/risk/MapHintBadge.vue';
 import MeasureExplainDialog from '@/components/risk/MeasureExplainDialog.vue';
 import MeasuresQueue from '@/components/risk/MeasuresQueue.vue';
+import RiskDistributionCard from '@/components/risk/RiskDistributionCard.vue';
 import RiskEntityCard from '@/components/risk/RiskEntityCard.vue';
 import RiskHeaderCard from '@/components/risk/RiskHeaderCard.vue';
 import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
+import SeasonalBarChart from '@/components/risk/SeasonalBarChart.vue';
 import SeasonPicker from '@/components/risk/SeasonPicker.vue';
 import { MEASURE_RULES } from '@/config/measureRules';
 import { RISK_HAZARDS } from '@/config/riskHazards';
@@ -15,9 +17,11 @@ import { api } from '@/service/api';
 import { isAdmin } from '@/service/auth';
 import { loadDistricts } from '@/service/geo';
 import { gibsOverlays, toIsoDate } from '@/service/gibs';
+import { ruDistrictName } from '@/utils/districtNames';
 import { riskSeverity } from '@/utils/riskScore';
 import { useToast } from 'primevue/usetoast';
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 // Зимняя обстановка ПО РАЙОНАМ (ADM2, 174). Данные готовит scripts/winter_fetch_districts.py
 // (один раз) в frontend/public/data/winter-districts.json — страница читает статический файл,
@@ -52,6 +56,7 @@ const layerDate = ref(new Date(+season.value, 1, 15));
 watch(season, (y) => (layerDate.value = new Date(+y, 1, 15)));
 const tileOverlays = computed(() => gibsOverlays(toIsoDate(layerDate.value)));
 
+const route = useRoute();
 const loading = ref(true);
 const error = ref(null);
 const allSeasons = ref({}); // { '2026': { shapeID: {risk, glaze, ...} } }
@@ -95,15 +100,38 @@ const mapValues = computed(() => {
 const legendTitle = computed(() => (isToday.value ? 'Зимний риск (ML, сегодня)' : isMl.value ? 'Зимний риск (ML)' : 'Зимний риск'));
 const hasData = computed(() => Object.keys(mapValues.value).length > 0);
 
+// Сезонный график — аналог «снегозапаса» у паводков: средний индекс по всем
+// районам за каждую зиму, клик по столбцу переключает сезон вверху страницы
+const chartLabel = (y) => `${+y - 1}–${y.slice(2)}`;
+const seasonChart = computed(() =>
+    Object.keys(allSeasons.value)
+        .sort()
+        .map((y) => {
+            const risks = Object.values(allSeasons.value[y]).map((d) => d.risk);
+            const mean = risks.length ? risks.reduce((sum, v) => sum + v, 0) / risks.length : 0;
+            return { label: chartLabel(y), value: y, mean: Math.round(mean * 10) / 10 };
+        })
+);
+
+function selectChartSeason(label) {
+    const entry = seasonChart.value.find((s) => s.label === label);
+    if (entry) season.value = entry.value;
+}
+
 onMounted(async () => {
     loadMeasures();
     loadDistricts()
-        .then((list) => (districtNames.value = Object.fromEntries(list.map((d) => [d.id, d.name]))))
+        .then((list) => (districtNames.value = Object.fromEntries(list.map((d) => [d.id, ruDistrictName(d.name)]))))
         .catch(() => {});
     try {
         const response = await fetch('/data/winter-districts.json');
         if (!response.ok) throw new Error('winter-districts.json не найден');
         allSeasons.value = await response.json();
+        // Deep-link с дашборда: ?district=<shapeID> — открыть карточку района
+        const districtId = route.query.district;
+        if (districtId && seasonData.value[districtId]) {
+            onRegionClick({ iso: String(districtId), name: districtNames.value[districtId] ?? String(districtId) });
+        }
     } catch (e) {
         error.value = e.message;
     } finally {
@@ -252,7 +280,7 @@ function openExplain(measure) {
                      не всплывают над фиксированным топбаром при прокрутке -->
                 <div class="relative isolate">
                     <!-- 600px — высота основной карты по дизайн-спецификации -->
-                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="mapValues" :palette="BLUE" :domain-min="0" :domain-max="100" :tile-overlays="tileOverlays" :legend-title="legendTitle" @region-click="onRegionClick" />
+                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="mapValues" :palette="BLUE" :domain-min="0" :domain-max="100" :tile-overlays="tileOverlays" :legend-title="legendTitle" :selected-id="selected?.iso ?? null" :format-name="ruDistrictName" @region-click="onRegionClick" />
 
                     <MapHintBadge v-if="!selected" text="Кликните район — скор, факторы «почему» и меры" />
                     <RiskEntityCard v-else entity-label="Район" :name="selected.name" :color="HAZARD.color" @close="selected = null">
@@ -304,10 +332,27 @@ function openExplain(measure) {
             </div>
         </div>
 
+        <div v-if="!isToday && seasonChart.length" class="col-span-12 xl:col-span-8">
+            <SeasonalBarChart
+                title="Индекс зимней опасности по сезонам, средний по районам (клик — переключить сезон)"
+                source="ERA5-Land, по районам"
+                :labels="seasonChart.map((s) => s.label)"
+                :values="seasonChart.map((s) => s.mean)"
+                :active-label="chartLabel(season)"
+                :color="HAZARD.color"
+                y-title="индекс 0–100"
+                @select="selectChartSeason"
+            />
+        </div>
+
+        <div v-if="hasData" class="col-span-12" :class="{ 'xl:col-span-4': !isToday && seasonChart.length }">
+            <RiskDistributionCard title="Распределение районов по уровню риска" :source="isMl ? 'ML' : 'индекс'" :values="mapValues" entity-label="районов" />
+        </div>
+
         <div class="col-span-12">
             <MeasuresQueue :measures="visibleMeasures" entity-label="Район" :scores="indexValues" can-decide priority-hint="Приоритет = скор риска района; решение принимает комиссия" @set-status="setStatus" @explain="openExplain">
                 <template #filter>
-                    <Button v-if="isAdmin" label="Сгенерировать черновики мер" size="small" outlined :loading="generating" :disabled="!hasData" @click="generateMeasures" />
+                    <Button v-if="isAdmin" label="Сгенерировать черновики мер" icon="pi pi-bolt" :loading="generating" :disabled="!hasData" @click="generateMeasures" />
                     <template v-if="selected?.iso">
                         <Tag :value="`фильтр: ${selected.name}`" severity="info" />
                         <Button label="Показать все" size="small" text @click="selected = null" />
