@@ -195,6 +195,13 @@ function openExplain(measure) {
     explainVisible.value = true;
 }
 
+// «Все меры объекта» из диалога: закрыть диалог, выбрать НП — карточка на карте
+// откроется, а очередь отфильтруется по нему (visibleMeasures)
+function showEntityMeasures(measure) {
+    explainVisible.value = false;
+    selected.value = points.value.find((p) => p.id === measure.settlementId) ?? selected.value;
+}
+
 async function setStatus(measure, status) {
     try {
         const updated = await api.put(`/measures/${measure.id}/status`, { status, note: null });
@@ -241,7 +248,8 @@ async function setStatus(measure, status) {
                      не всплывают над фиксированным топбаром при прокрутке -->
                 <div class="relative isolate">
                     <!-- 600px — высота основной карты по дизайн-спецификации -->
-                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="districtValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" legend-title="Риск паводка" :format-name="ruDistrictName" @point-click="selected = $event" @region-click="selected = null" />
+                    <!-- domain 0–100: фиксированная шкала легенды, единая со всеми контурами -->
+                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="districtValues" :domain-min="0" :domain-max="100" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" legend-title="Риск паводка" :format-name="ruDistrictName" @point-click="selected = $event" @region-click="selected = null" />
 
                     <MapHintBadge v-if="!selected" text="Кликните НП — скор, факторы «почему» и меры" />
                     <RiskEntityCard v-else entity-label="Населённый пункт" :name="selected.name" :color="HAZARD.color" @close="selected = null">
@@ -309,6 +317,6 @@ async function setStatus(measure, status) {
             </MeasuresQueue>
         </div>
 
-        <MeasureExplainDialog v-model:visible="explainVisible" :measure="explainMeasure" entity-label="Населённый пункт" :score="explainScore" :factors="explainFactors" :rules="MEASURE_RULES['flood-risk']" />
+        <MeasureExplainDialog v-model:visible="explainVisible" :measure="explainMeasure" entity-label="Населённый пункт" :score="explainScore" :factors="explainFactors" :rules="MEASURE_RULES['flood-risk']" @show-measures="showEntityMeasures" />
     </div>
 </template>

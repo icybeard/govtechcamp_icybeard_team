@@ -252,6 +252,13 @@ function openExplain(measure) {
     explainMeasure.value = measure;
     explainVisible.value = true;
 }
+
+// «Все меры объекта» из диалога: закрыть диалог и открыть карточку района —
+// очередь при этом фильтруется по нему (visibleMeasures по selected.iso)
+function showEntityMeasures(measure) {
+    explainVisible.value = false;
+    if (measure.districtId) onRegionClick({ iso: measure.districtId, name: districtNames.value[measure.districtId] ?? ruDistrictName(measure.districtName ?? measure.districtId) });
+}
 </script>
 
 <template>
@@ -290,7 +297,9 @@ function openExplain(measure) {
                      не всплывают над фиксированным топбаром при прокрутке -->
                 <div class="relative isolate">
                     <!-- 600px — высота основной карты по дизайн-спецификации -->
-                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" :legend-title="legendTitle" :selected-id="selected?.iso ?? null" :format-name="ruDistrictName" @region-click="onRegionClick" />
+                    <!-- domain 0–100: фиксированная шкала легенды, сопоставимая между контурами
+                         и режимами (без неё легенда «плавает» по фактическому разбросу данных) -->
+                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="indexValues" :domain-min="0" :domain-max="100" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" :legend-title="legendTitle" :selected-id="selected?.iso ?? null" :format-name="ruDistrictName" @region-click="onRegionClick" />
 
                     <MapHintBadge v-if="!selected" text="Кликните район — скор, факторы «почему» и меры" />
                     <RiskEntityCard v-else entity-label="Район" :name="selected.name" :color="HAZARD.color" @close="selected = null">
@@ -367,7 +376,7 @@ function openExplain(measure) {
             </MeasuresQueue>
         </div>
 
-        <MeasureExplainDialog v-model:visible="explainVisible" :measure="explainMeasure" entity-label="Район" :score="explainScore" :factors="explainFactors" :rules="MEASURE_RULES['fire-risk']" priority-note="скор риска района (население района не учитывается)" />
+        <MeasureExplainDialog v-model:visible="explainVisible" :measure="explainMeasure" entity-label="Район" :score="explainScore" :factors="explainFactors" :rules="MEASURE_RULES['fire-risk']" priority-note="скор риска района (население района не учитывается)" @show-measures="showEntityMeasures" />
     </div>
 </template>
 

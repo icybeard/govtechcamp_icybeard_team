@@ -246,6 +246,13 @@ function openExplain(measure) {
     explainMeasure.value = measure;
     explainVisible.value = true;
 }
+
+// «Все меры объекта» из диалога: закрыть диалог и открыть карточку района —
+// очередь при этом фильтруется по нему (visibleMeasures по selected.iso)
+function showEntityMeasures(measure) {
+    explainVisible.value = false;
+    if (measure.districtId) onRegionClick({ iso: measure.districtId, name: districtNames.value[measure.districtId] ?? ruDistrictName(measure.districtName ?? measure.districtId) });
+}
 </script>
 
 <template>
@@ -365,6 +372,6 @@ function openExplain(measure) {
             </MeasuresQueue>
         </div>
 
-        <MeasureExplainDialog v-model:visible="explainVisible" :measure="explainMeasure" entity-label="Район" :score="explainScore" :factors="explainFactors" :rules="MEASURE_RULES['winter-risk']" priority-note="скор риска района за сезон генерации (население района не учитывается)" />
+        <MeasureExplainDialog v-model:visible="explainVisible" :measure="explainMeasure" entity-label="Район" :score="explainScore" :factors="explainFactors" :rules="MEASURE_RULES['winter-risk']" priority-note="скор риска района за сезон генерации (население района не учитывается)" @show-measures="showEntityMeasures" />
     </div>
 </template>
