@@ -18,7 +18,7 @@ const props = defineProps({
     score: { type: Number, default: null }, // текущий скор объекта на странице
     factors: { type: Array, default: () => [] }, // [{ name, display, severity }]
     rules: { type: Array, default: () => [] }, // [{ minScore, title }] — правила модуля
-    priorityNote: { type: String, default: 'скор риска × lg(население)' }
+    priorityNote: { type: String, default: 'скор риска (0–100) × lg(население). Шкала приоритета не 0–100 (максимум ≈ 550): крупный НП встаёт в очереди выше малого села с тем же скором — цена ошибки выше' }
 });
 // show-measures — «показать все меры этого объекта»: страница закрывает диалог,
 // выбирает объект на карте и фильтрует очередь по нему

@@ -361,7 +361,7 @@ function showEntityMeasures(measure) {
         </div>
 
         <div class="col-span-12">
-            <MeasuresQueue :measures="visibleMeasures" entity-label="Район" :scores="generationValues" can-decide priority-hint="Приоритет = скор риска района; решение принимает комиссия" @set-status="setStatus" @explain="openExplain">
+            <MeasuresQueue :measures="visibleMeasures" entity-label="Район" :scores="generationValues" can-decide priority-hint="Приоритет = скор риска района (шкала 0–100, население не взвешивается); решение принимает комиссия" @set-status="setStatus" @explain="openExplain">
                 <template #filter>
                     <Button v-if="isAdmin" label="Сгенерировать черновики мер" icon="pi pi-bolt" :loading="generating" :disabled="!scoredCount" @click="generateMeasures" />
                     <template v-if="selected?.iso">

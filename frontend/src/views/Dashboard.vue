@@ -336,7 +336,7 @@ onMounted(async () => {
 
                 <!-- Ждут решения: топ по приоритету со всех контуров -->
                 <template v-if="pendingTop.length">
-                    <div class="top-caption">Ждут решения (топ по приоритету):</div>
+                    <div class="top-caption" title="Шкалы приоритета у контуров разные: паводки — скор × lg(население), до ~550; районы — скор ≤ 100. Для общего топа приоритет нормирован к максимуму своего контура.">Ждут решения (топ по приоритету, нормирован внутри контура):</div>
                     <ul class="list-none p-0 m-0 flex flex-col mb-4">
                         <li v-for="m in pendingTop" :key="m.id" class="measure-row" :title="m.title" @click="$router.push(`/risks/${MODULE_HAZARD[m.module] ?? 'flood'}`)">
                             <span v-if="MODULE_HAZARD[m.module]" class="measure-row__chip" :style="{ background: RISK_HAZARDS[MODULE_HAZARD[m.module]].bgColor }">

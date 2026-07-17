@@ -19,7 +19,7 @@ const props = defineProps({
     entityLabel: { type: String, default: 'НП' }, // заголовок первой колонки: 'НП' | 'Район'
     scores: { type: Object, default: () => ({}) }, // settlementId -> скор 0–100
     canDecide: { type: Boolean, default: false }, // показывать ли кнопки решений комиссии
-    priorityHint: { type: String, default: 'Приоритет = скор риска × lg(население); решение принимает комиссия' }
+    priorityHint: { type: String, default: 'Приоритет = скор (0–100) × lg(население), шкала до ~550 — крупный НП выше в очереди; решение принимает комиссия' }
 });
 // explain — клик по строке или иконке «i»: страница открывает диалог
 // «Почему рекомендовано» (объяснимость рекомендации)
