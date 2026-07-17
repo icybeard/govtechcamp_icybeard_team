@@ -150,8 +150,8 @@ async function removeFile(row) {
                         <Select v-model="kind" inputId="dsKind" :options="KINDS" optionLabel="label" optionValue="value" style="min-width: 240px" />
                     </div>
                     <div class="flex flex-col gap-1">
-                        <label class="text-muted-color" for="dsPeriod">Сезон (period)</label>
-                        <InputText v-model="period" id="dsPeriod" placeholder="напр. 2024; пусто — актуальные" style="width: 220px" />
+                        <label class="text-muted-color" for="dsPeriod">Сезон — пусто, если актуальный</label>
+                        <InputText v-model="period" id="dsPeriod" placeholder="напр. 2024" style="width: 240px" />
                     </div>
                     <div class="flex flex-col gap-1 grow">
                         <label class="text-muted-color" for="dsNote">Примечание</label>
@@ -159,7 +159,13 @@ async function removeFile(row) {
                     </div>
                 </div>
                 <div class="flex flex-wrap items-center gap-4 mt-4">
-                    <input ref="fileInput" type="file" accept=".csv,.json" @change="onFilePick" />
+                    <!-- Стилизованный выбор файла: нативный input скрыт, label — зона выбора -->
+                    <label class="file-pick" :class="{ 'file-pick--filled': selectedFile }">
+                        <input ref="fileInput" type="file" accept=".csv,.json" class="file-pick__input" @change="onFilePick" />
+                        <i class="pi" :class="selectedFile ? 'pi-file-check' : 'pi-paperclip'" style="font-size: 16px"></i>
+                        <span v-if="selectedFile" class="file-pick__name">{{ selectedFile.name }} · {{ formatSize(selectedFile.size) }}</span>
+                        <span v-else>Выбрать файл (.csv / .json)</span>
+                    </label>
                     <Button label="Загрузить" icon="pi pi-upload" :disabled="!selectedFile" :loading="uploading" @click="uploadFile" />
                     <Button v-if="TEMPLATES[kind]" label="Скачать шаблон" icon="pi pi-download" text @click="downloadTemplate" />
                 </div>
@@ -207,3 +213,40 @@ async function removeFile(row) {
         </div>
     </div>
 </template>
+
+<style scoped>
+/* Зона выбора файла вместо системного input: пунктир до выбора, обычная рамка после */
+.file-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 18px;
+    border: 1px dashed var(--surface-border);
+    border-radius: 10px;
+    color: var(--text-color-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    transition:
+        border-color 0.15s,
+        color 0.15s;
+}
+.file-pick:hover {
+    border-color: var(--primary-color);
+    color: var(--text-color);
+}
+.file-pick--filled {
+    border-style: solid;
+    border-color: var(--primary-color);
+    color: var(--text-color);
+}
+.file-pick__input {
+    display: none;
+}
+.file-pick__name {
+    font-weight: 600;
+    max-width: 340px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+</style>
