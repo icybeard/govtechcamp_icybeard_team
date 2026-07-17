@@ -60,10 +60,14 @@ const filteredMeasures = computed(() =>
             </div>
         </div>
         <div class="measures-filters">
-            <InputText v-model="search" :placeholder="`Поиск: ${entityLabel}`" size="small" style="width: 220px" />
+            <IconField class="measures-filters__search">
+                <InputIcon class="pi pi-search" />
+                <InputText v-model="search" :placeholder="`Поиск: ${entityLabel}`" size="small" fluid />
+            </IconField>
             <div class="measures-filters__right">
-                <Select v-model="titleFilter" :options="titleOptions" optionLabel="label" optionValue="value" placeholder="Мера" showClear size="small" style="min-width: 220px" />
-                <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value" placeholder="Статус" showClear size="small" style="min-width: 150px" />
+                <Select v-model="titleFilter" :options="titleOptions" optionLabel="label" optionValue="value" placeholder="Все меры" showClear size="small" style="min-width: 230px" />
+                <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value" placeholder="Все статусы" showClear size="small" style="min-width: 160px" />
+                <Button v-if="search || titleFilter || statusFilter" v-tooltip.bottom="'Сбросить фильтры'" icon="pi pi-filter-slash" size="small" text severity="secondary" @click="((search = ''), (titleFilter = null), (statusFilter = null))" />
             </div>
         </div>
         <DataTable :value="filteredMeasures" paginator :rows="10" size="small" sortField="priority" :sortOrder="-1" :loading="loading" rowHover class="measures-table" @row-click="$emit('explain', $event.data)">
@@ -138,7 +142,14 @@ const filteredMeasures = computed(() =>
     justify-content: space-between;
     gap: 10px;
     flex-wrap: wrap;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    background: var(--surface-ground);
+    border: 1px solid var(--surface-border);
+    border-radius: 10px;
+}
+.measures-filters__search {
+    width: 240px;
 }
 .measures-filters__right {
     display: flex;

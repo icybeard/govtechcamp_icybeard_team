@@ -2,7 +2,6 @@
 
 <template>
     <div class="layout-footer">
-        SAKAI by
-        <a href="https://primevue.org" target="_blank" rel="noopener noreferrer" class="text-primary font-bold hover:underline">PrimeVue</a>
+        Платформа превентивного управления природными рисками · команда <span class="text-primary font-bold">IcyBeard</span> · GovTech Camp 2026
     </div>
 </template>
