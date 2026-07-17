@@ -42,14 +42,19 @@ const recentDecisions = computed(() =>
         .slice(0, 5)
 );
 
-// Входящие для комиссии: топ ожидающих мер по приоритету со всех контуров,
-// клик ведёт на вкладку угрозы, где мера утверждается с контекстом (карта, «почему»)
-const pendingTop = computed(() =>
-    measures.value
-        .filter((m) => m.status === 'Proposed')
-        .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
-        .slice(0, 5)
-);
+// Входящие для комиссии: топ ожидающих мер со всех контуров. Шкалы приоритета
+// у контуров разные (паводки: скор×lg(население) — до ~550; районы: скор ≤100),
+// поэтому сортируем по приоритету, нормированному к максимуму своего контура —
+// иначе паводки всегда вытесняли бы районные меры из топа.
+const pendingTop = computed(() => {
+    const pending = measures.value.filter((m) => m.status === 'Proposed');
+    const maxByModule = {};
+    for (const m of pending) maxByModule[m.module] = Math.max(maxByModule[m.module] ?? 0, m.priority ?? 0);
+    return pending
+        .map((m) => ({ ...m, relPriority: (m.priority ?? 0) / (maxByModule[m.module] || 1) }))
+        .sort((a, b) => b.relPriority - a.relPriority)
+        .slice(0, 5);
+});
 
 // Имя объекта меры: у паводков — НП (settlementName), у пожаров/зимы — район.
 // settlementName у районных мер — пустая строка (не null), поэтому «||», не «??»
