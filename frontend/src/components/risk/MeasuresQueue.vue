@@ -26,12 +26,14 @@ defineEmits(['set-status', 'explain']);
 
 <template>
     <div class="card mb-0">
-        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <div class="flex items-center gap-3">
+        <div class="measures-head">
+            <div class="measures-head__titles">
                 <h5 class="m-0">Очередь превентивных мер</h5>
+                <span class="text-muted-color measures-head__hint">{{ priorityHint }}</span>
+            </div>
+            <div class="measures-head__actions">
                 <slot name="filter" />
             </div>
-            <span class="text-muted-color">{{ priorityHint }}</span>
         </div>
         <DataTable :value="measures" paginator :rows="10" size="small" sortField="priority" :sortOrder="-1" :loading="loading" rowHover class="measures-table" @row-click="$emit('explain', $event.data)">
             <Column field="settlementName" :header="entityLabel" sortable />
@@ -73,6 +75,30 @@ defineEmits(['set-status', 'explain']);
 </template>
 
 <style scoped>
+/* Шапка очереди: заголовок и пояснение слева, действия (генерация, фильтр) — справа */
+.measures-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.measures-head__titles {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.measures-head__hint {
+    font-size: 12px;
+}
+.measures-head__actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 /* строка кликабельна — открывает «Почему рекомендовано» */
 .measures-table :deep(.p-datatable-tbody > tr) {
     cursor: pointer;
