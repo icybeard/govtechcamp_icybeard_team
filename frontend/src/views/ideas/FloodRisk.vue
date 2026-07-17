@@ -28,7 +28,7 @@ const MODULE = 'flood-risk';
 const CURRENT_SEASON = '2024';
 const HAZARD = RISK_HAZARDS.flood;
 
-// Скоринг паводков есть только на уровне НП — «Регион» в GranularitySwitcher
+// Скоринг паводков есть только на уровне НП — «Район» в GranularitySwitcher
 // заблокирован (как в макете), пока модель не научится агрегировать риск на район.
 const GRANULARITY = 'np';
 
@@ -54,7 +54,7 @@ const generating = ref(false);
 // Хороплет районов: скор района = максимум по его сёлам — контекстная подложка
 // под точками НП. Привязка село→район считается один раз (point-in-polygon),
 // сезоны меняют только значения. Скоринг при этом остаётся на уровне НП —
-// «Регион» в переключателе детализации заблокирован.
+// «Район» в переключателе детализации заблокирован.
 const GEO_URL = '/geo/kz-districts.geojson';
 const districtBySettlement = ref({}); // settlementId -> shapeID
 const districtValues = computed(() => {

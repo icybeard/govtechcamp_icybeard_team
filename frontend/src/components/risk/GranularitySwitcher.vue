@@ -1,6 +1,7 @@
 <script setup>
 /**
- * Переключатель уровня детализации карты: «Регион» / «Населённый пункт».
+ * Переключатель уровня детализации карты: «Район» / «Населённый пункт»
+ * (внутреннее значение 'region' оставлено — уровень ADM2, по-русски «район»).
  *
  * У каждого контура сейчас есть данные только на одном уровне — компонент
  * это отражает: недоступный вариант задизейблен с подсказкой, а не скрыт,
@@ -12,7 +13,7 @@ const props = defineProps({
     modelValue: { type: String, required: true }, // 'region' | 'np'
     supportsRegion: { type: Boolean, default: true },
     supportsNp: { type: Boolean, default: true },
-    regionLabel: { type: String, default: 'Регион' },
+    regionLabel: { type: String, default: 'Район' },
     npLabel: { type: String, default: 'Населённый пункт' },
     disabledReason: { type: String, default: 'Недоступно для этого слоя' }
 });
