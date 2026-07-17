@@ -5,6 +5,7 @@ import LayersDatePicker from '@/components/risk/LayersDatePicker.vue';
 import MapHintBadge from '@/components/risk/MapHintBadge.vue';
 import MeasureExplainDialog from '@/components/risk/MeasureExplainDialog.vue';
 import MeasuresQueue from '@/components/risk/MeasuresQueue.vue';
+import RiskDistributionCard from '@/components/risk/RiskDistributionCard.vue';
 import RiskEntityCard from '@/components/risk/RiskEntityCard.vue';
 import RiskHeaderCard from '@/components/risk/RiskHeaderCard.vue';
 import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
@@ -15,8 +16,10 @@ import { isAdmin } from '@/service/auth';
 import { loadDistricts } from '@/service/geo';
 import { gibsOverlays, toIsoDate } from '@/service/gibs';
 import { degToCompass, fetchRegionWeather, fetchWindGrid } from '@/service/weather';
+import { ruDistrictName } from '@/utils/districtNames';
 import { useToast } from 'primevue/usetoast';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 
 /**
  * Риск-скоринг природных пожаров: метео-индекс по районам (Open-Meteo, сейчас) +
@@ -35,6 +38,7 @@ const HAZARD = RISK_HAZARDS.fire;
 // в GranularitySwitcher заблокирован (как в макете), пока нет модели по НП.
 const GRANULARITY = 'region';
 
+const route = useRoute();
 const loading = ref(true);
 const error = ref(null);
 const regionWeather = ref({});
@@ -79,6 +83,14 @@ const compositeValues = computed(() =>
     )
 );
 const indexValues = computed(() => (mode.value === 'ml' && mlToday.value ? mlToday.value.values : compositeValues.value));
+
+// Топ-5 районов по текущему риску (композит или ML) — клик открывает карточку на карте
+const fireTop5 = computed(() =>
+    Object.entries(indexValues.value)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([id, value]) => ({ id, name: districtNames.value[id] ?? ruDistrictName(regionWeather.value[id]?.name ?? id), value: Math.round(value) }))
+);
 const legendTitle = computed(() => (mode.value === 'ml' ? 'ML-прогноз (P×100)' : hasHistory.value ? 'Риск пожара' : 'Метео-индекс'));
 const scoredCount = computed(() => Object.keys(indexValues.value).length);
 
@@ -145,12 +157,17 @@ onMounted(async () => {
     } catch {
         /* режим ML недоступен — селектор задизейблен */
     }
-    refresh();
     timer = setInterval(refresh, REFRESH_MS);
     loadMeasures();
     loadDistricts()
-        .then((list) => (districtNames.value = Object.fromEntries(list.map((d) => [d.id, d.name]))))
+        .then((list) => (districtNames.value = Object.fromEntries(list.map((d) => [d.id, ruDistrictName(d.name)]))))
         .catch(() => {});
+    await refresh();
+    // Deep-link с дашборда: ?district=<shapeID> — открыть карточку района
+    const districtId = route.query.district;
+    if (districtId && regionWeather.value[districtId]) {
+        onRegionClick({ iso: String(districtId), name: districtNames.value[districtId] ?? ruDistrictName(regionWeather.value[districtId].name ?? String(districtId)) });
+    }
 });
 onBeforeUnmount(() => clearInterval(timer));
 
@@ -161,7 +178,8 @@ function onRegionClick(region) {
         return;
     }
     const history = fireHistory.value[region.iso];
-    selected.value = { ...w, iso: region.iso, combined: compositeValues.value[region.iso], history, ml: mlToday.value?.values?.[region.iso] };
+    // name — после спреда: в regionWeather имена латиницей из geojson, показываем русские
+    selected.value = { ...w, iso: region.iso, name: region.name, combined: compositeValues.value[region.iso], history, ml: mlToday.value?.values?.[region.iso] };
 }
 
 // ── Очередь превентивных мер по районам ─────────────────────────────────────
@@ -272,7 +290,7 @@ function openExplain(measure) {
                      не всплывают над фиксированным топбаром при прокрутке -->
                 <div class="relative isolate">
                     <!-- 600px — высота основной карты по дизайн-спецификации -->
-                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" :legend-title="legendTitle" @region-click="onRegionClick" />
+                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="indexValues" :markers="markers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" :legend-title="legendTitle" :selected-id="selected?.iso ?? null" :format-name="ruDistrictName" @region-click="onRegionClick" />
 
                     <MapHintBadge v-if="!selected" text="Кликните район — скор, факторы «почему» и меры" />
                     <RiskEntityCard v-else entity-label="Район" :name="selected.name" :color="HAZARD.color" @close="selected = null">
@@ -314,10 +332,29 @@ function openExplain(measure) {
             </div>
         </div>
 
+        <div v-if="scoredCount" class="col-span-12 xl:col-span-8">
+            <RiskDistributionCard title="Распределение районов по уровню риска" :source="mode === 'ml' ? 'ML-прогноз на сегодня' : 'композит, обновление раз в час'" :values="indexValues" entity-label="районов" />
+        </div>
+
+        <div v-if="fireTop5.length" class="col-span-12 xl:col-span-4">
+            <div class="card mb-0 h-full">
+                <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+                    <h5 class="m-0">Топ-5 районов</h5>
+                    <span class="text-muted-color">клик — карточка на карте</span>
+                </div>
+                <ul class="list-none p-0 m-0 flex flex-col">
+                    <li v-for="d in fireTop5" :key="d.id" class="fire-top-row" @click="onRegionClick({ iso: d.id, name: d.name })">
+                        <span>{{ d.name }}</span>
+                        <RiskScoreBadge :score="d.value" suffix="" size="sm" />
+                    </li>
+                </ul>
+            </div>
+        </div>
+
         <div class="col-span-12">
             <MeasuresQueue :measures="visibleMeasures" entity-label="Район" :scores="generationValues" can-decide priority-hint="Приоритет = скор риска района; решение принимает комиссия" @set-status="setStatus" @explain="openExplain">
                 <template #filter>
-                    <Button v-if="isAdmin" label="Сгенерировать черновики мер" size="small" outlined :loading="generating" @click="generateMeasures" />
+                    <Button v-if="isAdmin" label="Сгенерировать черновики мер" icon="pi pi-bolt" :loading="generating" :disabled="!scoredCount" @click="generateMeasures" />
                     <template v-if="selected?.iso">
                         <Tag :value="`фильтр: ${selected.name}`" severity="info" />
                         <Button label="Показать все" size="small" text @click="selected = null" />
@@ -333,3 +370,20 @@ function openExplain(measure) {
         <MeasureExplainDialog v-model:visible="explainVisible" :measure="explainMeasure" entity-label="Район" :score="explainScore" :factors="explainFactors" :rules="MEASURE_RULES['fire-risk']" priority-note="скор риска района (население района не учитывается)" />
     </div>
 </template>
+
+<style scoped>
+/* Строки топ-5 районов: как top-row на дашборде — клик открывает карточку на карте */
+.fire-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 0;
+    border-top: 1px solid var(--surface-border);
+    font-size: 14px;
+    cursor: pointer;
+}
+.fire-top-row:hover {
+    background: var(--surface-hover);
+}
+</style>
