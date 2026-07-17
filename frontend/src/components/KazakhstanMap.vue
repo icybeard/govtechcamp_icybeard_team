@@ -29,7 +29,11 @@ const props = defineProps({
     // Фиксированный диапазон шкалы (напр. 0 и 100). null → авто по данным.
     domainMin: { type: Number, default: null },
     domainMax: { type: Number, default: null },
-    height: { type: String, default: '520px' }
+    height: { type: String, default: '520px' },
+    // Выбранный регион (shapeISO/shapeID) — постоянная подсветка контура полигона
+    selectedId: { type: String, default: null },
+    // Преобразование имён регионов для тултипов и событий (напр. транслитерация в русские)
+    formatName: { type: Function, default: (name) => name }
 });
 
 const emit = defineEmits(['region-click', 'region-hover', 'point-click']);
@@ -134,9 +138,24 @@ function styleFeature(feature) {
 function regionPayload(feature) {
     return {
         iso: featureKey(feature),
-        name: feature.properties.shapeName,
+        name: props.formatName(feature.properties.shapeName),
         value: props.values[featureKey(feature)] ?? null
     };
+}
+
+// Постоянная подсветка выбранного региона: контур полигона толще и темнее.
+// Возврат стиля при смене выбора — через resetStyle + повторное применение.
+function applySelection() {
+    if (!geoLayer) return;
+    geoLayer.eachLayer((layer) => {
+        const isSelected = featureKey(layer.feature) === props.selectedId;
+        if (isSelected) {
+            layer.setStyle({ weight: 3.5, color: '#0f172a', fillOpacity: 0.85 });
+            layer.bringToFront();
+        } else {
+            geoLayer.resetStyle(layer);
+        }
+    });
 }
 
 function onEachFeature(feature, layer) {
@@ -151,7 +170,11 @@ function onEachFeature(feature, layer) {
             e.target.setStyle({ weight: 2.5, color: '#1e293b' });
             emit('region-hover', regionPayload(feature));
         },
-        mouseout: (e) => geoLayer.resetStyle(e.target)
+        mouseout: (e) => {
+            // выбранный регион не «гаснет» при уходе мыши — его стиль восстанавливает applySelection
+            if (featureKey(feature) === props.selectedId) applySelection();
+            else geoLayer.resetStyle(e.target);
+        }
     });
 }
 
@@ -212,6 +235,7 @@ async function initMap() {
     const geojson = await response.json();
     geoLayer = L.geoJSON(geojson, { style: styleFeature, onEachFeature }).addTo(map);
     map.fitBounds(geoLayer.getBounds(), { padding: [10, 10] });
+    applySelection();
     renderPoints();
     renderMarkers();
     renderWind();
@@ -223,10 +247,16 @@ watch(
     () => {
         if (geoLayer) {
             geoLayer.setStyle(styleFeature);
+            applySelection();
             renderLegend();
         }
     },
     { deep: true }
+);
+
+watch(
+    () => props.selectedId,
+    () => applySelection()
 );
 
 watch(
@@ -271,6 +301,11 @@ onBeforeUnmount(() => map?.remove());
 </template>
 
 <style>
+/* Браузерная фокус-обводка на SVG-полигоне после клика выглядит как белый
+   прямоугольник вокруг района — выделение делает applySelection по контуру */
+.leaflet-interactive:focus {
+    outline: none;
+}
 .kz-map {
     width: 100%;
     z-index: 0;
