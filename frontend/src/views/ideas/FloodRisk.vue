@@ -4,6 +4,7 @@ import GranularitySwitcher from '@/components/risk/GranularitySwitcher.vue';
 import MapHintBadge from '@/components/risk/MapHintBadge.vue';
 import MeasureExplainDialog from '@/components/risk/MeasureExplainDialog.vue';
 import MeasuresQueue from '@/components/risk/MeasuresQueue.vue';
+import RiskDistributionCard from '@/components/risk/RiskDistributionCard.vue';
 import RiskEntityCard from '@/components/risk/RiskEntityCard.vue';
 import RiskHeaderCard from '@/components/risk/RiskHeaderCard.vue';
 import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
@@ -18,8 +19,10 @@ import { findDistrict, loadDistricts } from '@/service/geo';
 import LayersDatePicker from '@/components/risk/LayersDatePicker.vue';
 import { gibsOverlays, toIsoDate } from '@/service/gibs';
 import { degToCompass, fetchRegionWeather, fetchWindGrid, windMarkers } from '@/service/weather';
+import { ruDistrictName } from '@/utils/districtNames';
 import { useToast } from 'primevue/usetoast';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 const MODULE = 'flood-risk';
 const CURRENT_SEASON = '2024';
@@ -39,6 +42,7 @@ const seasonSummary = ref([]);
 const base2024Scores = ref({}); // settlementId -> скор 2024 для сравнения в деталке
 
 const toast = useToast();
+const route = useRoute();
 
 const loading = ref(true);
 const error = ref(null);
@@ -147,6 +151,9 @@ onMounted(async () => {
     weatherTimer = setInterval(refreshWeather, 60 * 60 * 1000); // раз в час — бережём лимит Open-Meteo
     try {
         await loadAll();
+        // Deep-link с дашборда: ?settlement=<id> — открыть карточку НП
+        const settlementId = route.query.settlement;
+        if (settlementId) selected.value = points.value.find((p) => String(p.id) === String(settlementId)) ?? null;
     } catch (e) {
         error.value = e.message;
     } finally {
@@ -217,10 +224,7 @@ async function setStatus(measure, status) {
 
                 </template>
                 <template #actions>
-                    <div class="flex items-center gap-3 flex-wrap justify-end">
-                        <GranularitySwitcher :model-value="GRANULARITY" :supports-region="false" :supports-np="true" />
-                        <Button v-if="isAdmin && points.length" label="Сгенерировать черновики мер" severity="contrast" size="small" :loading="generating" @click="generateMeasures" />
-                    </div>
+                    <GranularitySwitcher :model-value="GRANULARITY" :supports-region="false" :supports-np="true" />
                 </template>
                 <template #messages>
                     <Message v-if="error" severity="error" :closable="false" class="mt-4">{{ error }}</Message>
@@ -237,7 +241,7 @@ async function setStatus(measure, status) {
                      не всплывают над фиксированным топбаром при прокрутке -->
                 <div class="relative isolate">
                     <!-- 600px — высота основной карты по дизайн-спецификации -->
-                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="districtValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" legend-title="Риск паводка" @point-click="selected = $event" @region-click="selected = null" />
+                    <KazakhstanMap height="600px" :geo-url="GEO_URL" :values="districtValues" :points="points" :markers="weatherMarkers" :tile-overlays="tileOverlays" :wind-grid="liveWeather ? windGrid : null" legend-title="Риск паводка" :format-name="ruDistrictName" @point-click="selected = $event" @region-click="selected = null" />
 
                     <MapHintBadge v-if="!selected" text="Кликните НП — скор, факторы «почему» и меры" />
                     <RiskEntityCard v-else entity-label="Населённый пункт" :name="selected.name" :color="HAZARD.color" @close="selected = null">
@@ -271,7 +275,7 @@ async function setStatus(measure, status) {
             </div>
         </div>
 
-        <div v-if="seasonSummary.length" class="col-span-12">
+        <div v-if="seasonSummary.length" class="col-span-12 xl:col-span-8">
             <SeasonalBarChart
                 title="Снегозапас марта по сезонам, % нормы (клик — переключить сезон)"
                 source="ERA5-Land, медиана по НП региона"
@@ -284,9 +288,15 @@ async function setStatus(measure, status) {
             />
         </div>
 
+        <div v-if="points.length" class="col-span-12" :class="{ 'xl:col-span-4': seasonSummary.length }">
+            <RiskDistributionCard title="Распределение НП по уровню риска" :source="`сезон ${season}`" :values="scoreBySettlement" entity-label="НП" />
+        </div>
+
         <div class="col-span-12">
             <MeasuresQueue :measures="visibleMeasures" :loading="loading" entity-label="НП" :scores="scoreBySettlement" can-decide @set-status="setStatus" @explain="openExplain">
                 <template #filter>
+                    <!-- Кнопка генерации — в таблице мер, единообразно со всеми контурами -->
+                    <Button v-if="isAdmin && points.length" label="Сгенерировать черновики мер" icon="pi pi-bolt" :loading="generating" @click="generateMeasures" />
                     <template v-if="selected">
                         <Tag :value="`фильтр: ${selected.name}`" severity="info" />
                         <Button label="Показать все" size="small" text @click="selected = null" />
