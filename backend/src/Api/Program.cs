@@ -56,7 +56,30 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
         .AllowAnyHeader()
         .AllowAnyMethod()));
 
-builder.Services.AddOpenApi();
+// OpenAPI-документ (/openapi/v1.json) + Bearer-схема, чтобы в Swagger UI работала
+// кнопка Authorize: токен из POST /api/auth/login подставляется во все запросы
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Info ??= new Microsoft.OpenApi.OpenApiInfo();
+        document.Info.Title = "IcyBeard GovTech API";
+        document.Info.Description = "Риск-скоринг НП и районов (паводки, пожары, зима), очередь превентивных мер. Авторизация: POST /api/auth/login → кнопка Authorize → вставить token.";
+        document.Components ??= new Microsoft.OpenApi.OpenApiComponents();
+        document.Components.SecuritySchemes ??= new Dictionary<string, Microsoft.OpenApi.IOpenApiSecurityScheme>();
+        document.Components.SecuritySchemes["Bearer"] = new Microsoft.OpenApi.OpenApiSecurityScheme
+        {
+            Type = Microsoft.OpenApi.SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT"
+        };
+        document.Security = [new Microsoft.OpenApi.OpenApiSecurityRequirement
+        {
+            [new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", document)] = []
+        }];
+        return Task.CompletedTask;
+    });
+});
 
 var app = builder.Build();
 
@@ -77,10 +100,14 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-if (app.Environment.IsDevelopment())
+// Swagger доступен и в проде (dc.jurek.kz/swagger): документация API — часть
+// сдаваемых артефактов, все мутирующие эндпоинты и так под JWT-авторизацией
+app.MapOpenApi();
+app.UseSwaggerUI(options =>
 {
-    app.MapOpenApi();
-}
+    options.SwaggerEndpoint("/openapi/v1.json", "IcyBeard GovTech API v1");
+    options.DocumentTitle = "IcyBeard GovTech API — Swagger";
+});
 
 app.UseCors();
 app.UseAuthentication();

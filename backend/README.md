@@ -26,6 +26,8 @@ cd backend/src/Api
 dotnet watch                  # http://localhost:5080, миграции применятся сами
 ```
 
+Спецификация API — Swagger UI на `/swagger` (документ — `/openapi/v1.json`, генерирует встроенный `Microsoft.AspNetCore.OpenApi`, UI — `Swashbuckle.AspNetCore.SwaggerUI`). Доступен и в контейнере: http://localhost:5173/swagger через nginx или http://localhost:5080/swagger напрямую. Кнопка **Authorize** принимает `token` из `POST /api/auth/login` — дальше все запросы идут с Bearer-заголовком.
+
 ## Суперпользователь
 
 Создаётся сидером при старте API из `.env` в корне репозитория (`SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, см. `.env.example`):

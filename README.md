@@ -68,6 +68,7 @@ docker compose up --build -d
 
 - **Веб-клиент:** http://localhost:5173 — вход `admin@icybeard.local` / `ChangeMe123!`
 - **API:** http://localhost:5080 (`/api/health`); из веб-клиента `/api` проксирует nginx
+- **Swagger:** http://localhost:5173/swagger (или https://dc.jurek.kz/swagger) — вся спецификация API; кнопка Authorize принимает token из `POST /api/auth/login`
 - Остановить: `docker compose down`; полный сброс БД: `docker compose down -v`
 - На macOS/Linux есть сокращения: `make up` / `make upd` / `make down` / `make clean` / `make logs`
 
