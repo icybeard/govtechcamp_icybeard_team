@@ -33,6 +33,10 @@ services:
       Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:-ChangeMe123!}
       Firms__MapKey: ${FIRMS_MAP_KEY:-}
       Cors__Origins: http://localhost:5173
+      # страница «Данные»: загруженные датасеты переживают пересоздание контейнера
+      Datasets__Path: /app/data/uploads
+    volumes:
+      - uploads:/app/data/uploads
     ports:
       - "5080:8080"
     depends_on:
@@ -49,3 +53,4 @@ services:
 
 volumes:
   pgdata:
+  uploads:

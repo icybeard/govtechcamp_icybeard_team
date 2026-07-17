@@ -16,9 +16,12 @@ defineProps({
     loading: { type: Boolean, default: false },
     entityLabel: { type: String, default: 'НП' }, // заголовок первой колонки: 'НП' | 'Район'
     scores: { type: Object, default: () => ({}) }, // settlementId -> скор 0–100
-    canDecide: { type: Boolean, default: false } // показывать ли кнопки решений комиссии
+    canDecide: { type: Boolean, default: false }, // показывать ли кнопки решений комиссии
+    priorityHint: { type: String, default: 'Приоритет = скор риска × lg(население); решение принимает комиссия' }
 });
-defineEmits(['set-status']);
+// explain — клик по строке или иконке «i»: страница открывает диалог
+// «Почему рекомендовано» (объяснимость рекомендации)
+defineEmits(['set-status', 'explain']);
 </script>
 
 <template>
@@ -28,9 +31,9 @@ defineEmits(['set-status']);
                 <h5 class="m-0">Очередь превентивных мер</h5>
                 <slot name="filter" />
             </div>
-            <span class="text-muted-color">Приоритет = скор риска × lg(население); решение принимает комиссия</span>
+            <span class="text-muted-color">{{ priorityHint }}</span>
         </div>
-        <DataTable :value="measures" paginator :rows="10" size="small" sortField="priority" :sortOrder="-1" :loading="loading">
+        <DataTable :value="measures" paginator :rows="10" size="small" sortField="priority" :sortOrder="-1" :loading="loading" rowHover class="measures-table" @row-click="$emit('explain', $event.data)">
             <Column field="settlementName" :header="entityLabel" sortable />
             <Column header="Скор" style="width: 6rem">
                 <template #body="{ data }">
@@ -50,13 +53,16 @@ defineEmits(['set-status']);
                     <span v-else class="text-muted-color">—</span>
                 </template>
             </Column>
-            <Column header="Действия" style="width: 12rem">
+            <Column header="Действия" style="width: 14rem">
                 <template #body="{ data }">
-                    <div v-if="canDecide && data.status === 'Proposed'" class="flex gap-2">
-                        <Button label="Утвердить" size="small" severity="success" outlined @click="$emit('set-status', data, 'Approved')" />
-                        <Button icon="pi pi-times" size="small" severity="danger" outlined @click="$emit('set-status', data, 'Rejected')" />
+                    <div class="flex gap-2 items-center">
+                        <Button v-tooltip.left="'Почему рекомендовано'" icon="pi pi-info-circle" size="small" text @click.stop="$emit('explain', data)" />
+                        <template v-if="canDecide && data.status === 'Proposed'">
+                            <Button label="Утвердить" size="small" severity="success" outlined @click.stop="$emit('set-status', data, 'Approved')" />
+                            <Button icon="pi pi-times" size="small" severity="danger" outlined @click.stop="$emit('set-status', data, 'Rejected')" />
+                        </template>
+                        <Button v-else-if="canDecide && data.status === 'Approved'" label="Выполнено" size="small" severity="info" outlined @click.stop="$emit('set-status', data, 'Done')" />
                     </div>
-                    <Button v-else-if="canDecide && data.status === 'Approved'" label="Выполнено" size="small" severity="info" outlined @click="$emit('set-status', data, 'Done')" />
                 </template>
             </Column>
             <template #empty>
@@ -65,3 +71,10 @@ defineEmits(['set-status']);
         </DataTable>
     </div>
 </template>
+
+<style scoped>
+/* строка кликабельна — открывает «Почему рекомендовано» */
+.measures-table :deep(.p-datatable-tbody > tr) {
+    cursor: pointer;
+}
+</style>

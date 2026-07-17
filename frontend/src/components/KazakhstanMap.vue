@@ -41,6 +41,8 @@ let pointsLayer = null;
 let markersLayer = null;
 let velocityLayer = null;
 let legend = null;
+let overlaysControl = null;
+let overlayLayers = []; // [{ id, layer }] — id стабилен между датами GIBS
 
 function colorFor(value, min, max) {
     if (value === undefined || value === null) return '#cbd5e1';
@@ -153,6 +155,26 @@ function onEachFeature(feature, layer) {
     });
 }
 
+// Пересоздаёт GIBS-слои при смене даты (сезона): включённость сохраняется по id,
+// чтобы выбранный слой не выключался при переключении сезона
+function renderTileOverlays() {
+    const wasEnabled = new Set(overlayLayers.filter((o) => map.hasLayer(o.layer)).map((o) => o.id));
+    const firstRender = overlayLayers.length === 0;
+    overlayLayers.forEach((o) => o.layer.remove());
+    overlaysControl?.remove();
+    overlaysControl = null;
+    overlayLayers = [];
+    if (props.tileOverlays.length === 0) return;
+    const entries = {};
+    for (const t of props.tileOverlays) {
+        const layer = L.tileLayer(t.url, { pane: t.pane ?? 'weatherTiles', opacity: t.opacity ?? 1, maxNativeZoom: t.maxNativeZoom, maxZoom: 12, attribution: t.attribution });
+        entries[t.name] = layer;
+        overlayLayers.push({ id: t.id ?? t.name, layer });
+        if (!firstRender && wasEnabled.has(t.id ?? t.name)) layer.addTo(map);
+    }
+    overlaysControl = L.control.layers(null, entries, { position: 'topleft', collapsed: true }).addTo(map);
+}
+
 function renderLegend() {
     if (legend) legend.remove();
     const range = valueRange();
@@ -181,18 +203,10 @@ async function initMap() {
     }).addTo(map);
     L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap, geoBoundaries').addTo(map);
 
-    if (props.tileOverlays.length) {
-        // отдельная панель выше хороплета (overlayPane z=400), ниже маркеров (600):
-        // иначе осадки/снимок «ныряют» под заливку рисков
-        map.createPane('weatherTiles').style.zIndex = 450;
-        const overlays = Object.fromEntries(
-            props.tileOverlays.map((t) => [
-                t.name,
-                L.tileLayer(t.url, { pane: t.pane ?? 'weatherTiles', opacity: t.opacity ?? 1, maxNativeZoom: t.maxNativeZoom, maxZoom: 12, attribution: t.attribution })
-            ])
-        );
-        L.control.layers(null, overlays, { position: 'topleft', collapsed: true }).addTo(map);
-    }
+    // отдельная панель выше хороплета (overlayPane z=400), ниже маркеров (600):
+    // иначе осадки/снег «ныряют» под заливку рисков
+    map.createPane('weatherTiles').style.zIndex = 450;
+    renderTileOverlays();
 
     const response = await fetch(props.geoUrl);
     const geojson = await response.json();
@@ -238,6 +252,13 @@ watch(
     () => props.windGrid,
     () => {
         if (map) renderWind();
+    }
+);
+
+watch(
+    () => props.tileOverlays,
+    () => {
+        if (map) renderTileOverlays();
     }
 );
 

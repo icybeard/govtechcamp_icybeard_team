@@ -1,14 +1,21 @@
 <script setup>
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
 import GranularitySwitcher from '@/components/risk/GranularitySwitcher.vue';
+import LayersDatePicker from '@/components/risk/LayersDatePicker.vue';
 import MapHintBadge from '@/components/risk/MapHintBadge.vue';
+import MeasureExplainDialog from '@/components/risk/MeasureExplainDialog.vue';
+import MeasuresQueue from '@/components/risk/MeasuresQueue.vue';
 import RiskEntityCard from '@/components/risk/RiskEntityCard.vue';
 import RiskHeaderCard from '@/components/risk/RiskHeaderCard.vue';
 import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
+import { MEASURE_RULES } from '@/config/measureRules';
 import { RISK_HAZARDS } from '@/config/riskHazards';
 import { api } from '@/service/api';
-import { gibsOverlays } from '@/service/gibs';
+import { isAdmin } from '@/service/auth';
+import { loadDistricts } from '@/service/geo';
+import { gibsOverlays, toIsoDate } from '@/service/gibs';
 import { degToCompass, fetchRegionWeather, fetchWindGrid } from '@/service/weather';
+import { useToast } from 'primevue/usetoast';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 /**
@@ -53,7 +60,13 @@ const modeOptions = computed(() => [
     { label: 'ML-прогноз', value: 'ml', disabled: !mlToday.value }
 ]);
 
-const tileOverlays = gibsOverlays();
+// Дата слоёв GIBS: дефолт «вчера» (live-режим — IMERG «последний срез»);
+// выбор другой даты в пикере переключает слои на архивный срез
+const layerDate = ref(new Date(Date.now() - 24 * 3600 * 1000));
+const tileOverlays = computed(() => {
+    const iso = toIsoDate(layerDate.value);
+    return iso === toIsoDate(new Date(Date.now() - 24 * 3600 * 1000)) ? gibsOverlays() : gibsOverlays(iso);
+});
 
 // Итоговый риск района = 0.5·метео-сейчас + 0.5·историческая частота (если история загружена)
 const hasHistory = computed(() => Object.keys(fireHistory.value).length > 0);
@@ -134,6 +147,10 @@ onMounted(async () => {
     }
     refresh();
     timer = setInterval(refresh, REFRESH_MS);
+    loadMeasures();
+    loadDistricts()
+        .then((list) => (districtNames.value = Object.fromEntries(list.map((d) => [d.id, d.name]))))
+        .catch(() => {});
 });
 onBeforeUnmount(() => clearInterval(timer));
 
@@ -144,7 +161,78 @@ function onRegionClick(region) {
         return;
     }
     const history = fireHistory.value[region.iso];
-    selected.value = { ...w, combined: compositeValues.value[region.iso], history, ml: mlToday.value?.values?.[region.iso] };
+    selected.value = { ...w, iso: region.iso, combined: compositeValues.value[region.iso], history, ml: mlToday.value?.values?.[region.iso] };
+}
+
+// ── Очередь превентивных мер по районам ─────────────────────────────────────
+// Скоры для генерации: ML-прогноз на сегодня, без него — композит. Районов в БД
+// нет, поэтому фронт шлёт districtValues (shapeID → скор+имя) в /measures/generate.
+const toast = useToast();
+const measures = ref([]);
+const generating = ref(false);
+const districtNames = ref({}); // shapeID -> имя района (geojson)
+
+const generationValues = computed(() => mlToday.value?.values ?? compositeValues.value);
+// очередь переиспользует колонки НП: district-поля мапим в settlement-поля
+const queueRows = computed(() => measures.value.map((m) => ({ ...m, settlementId: m.districtId, settlementName: m.districtName })));
+const visibleMeasures = computed(() => (selected.value?.iso ? queueRows.value.filter((m) => m.settlementId === selected.value.iso) : queueRows.value));
+
+async function loadMeasures() {
+    try {
+        measures.value = await api.get('/measures/?module=fire-risk');
+    } catch {
+        measures.value = [];
+    }
+}
+
+async function generateMeasures() {
+    generating.value = true;
+    try {
+        const districtValues = Object.fromEntries(
+            Object.entries(generationValues.value)
+                .filter(([id]) => districtNames.value[id])
+                .map(([id, value]) => [id, { value, name: districtNames.value[id] }])
+        );
+        const result = await api.post('/measures/generate', { module: 'fire-risk', metricKey: 'risk_score', period: null, districtValues });
+        toast.add({ severity: 'success', summary: `Создано черновиков: ${result.created}`, life: 4000 });
+        await loadMeasures();
+    } catch (e) {
+        toast.add({ severity: 'error', summary: 'Ошибка генерации', detail: e.message, life: 5000 });
+    } finally {
+        generating.value = false;
+    }
+}
+
+async function setStatus(measure, status) {
+    try {
+        const updated = await api.put(`/measures/${measure.id}/status`, { status, note: null });
+        measures.value = measures.value.map((m) => (m.id === updated.id ? updated : m));
+    } catch (e) {
+        toast.add({ severity: 'error', summary: 'Не удалось изменить статус', detail: e.message, life: 5000 });
+    }
+}
+
+// Объяснимость: правило + разбор скора района (метео-слагаемые, история, ML)
+const explainMeasure = ref(null);
+const explainVisible = ref(false);
+const explainScore = computed(() => {
+    const v = generationValues.value[explainMeasure.value?.settlementId];
+    return v === undefined ? null : Math.round(v);
+});
+const explainFactors = computed(() => {
+    const iso = explainMeasure.value?.settlementId;
+    if (!iso) return [];
+    const w = regionWeather.value[iso];
+    const rows = (w?.parts ?? []).map((p) => ({ name: p.name, display: `+${p.value}`, severity: p.value >= 15 ? 'danger' : p.value >= 8 ? 'warn' : 'secondary' }));
+    const prior = fireHistory.value[iso]?.prior;
+    if (prior !== undefined) rows.push({ name: 'Историческая частота очагов (FIRMS)', display: String(Math.round(prior)), severity: prior > 60 ? 'danger' : prior > 35 ? 'warn' : 'secondary' });
+    const ml = mlToday.value?.values?.[iso];
+    if (ml !== undefined) rows.push({ name: 'ML-прогноз на сегодня (LightGBM)', display: String(ml), severity: ml >= 60 ? 'danger' : ml >= 35 ? 'warn' : 'secondary' });
+    return rows;
+});
+function openExplain(measure) {
+    explainMeasure.value = measure;
+    explainVisible.value = true;
 }
 </script>
 
@@ -155,6 +243,7 @@ function onRegionClick(region) {
                 <template #controls>
                     <SelectButton v-model="mode" :options="modeOptions" optionLabel="label" optionValue="value" optionDisabled="disabled" size="small" />
                     <Tag v-if="mode === 'ml' && mlToday" :value="`прогноз от ${mlToday.generatedAt.slice(11, 16)} UTC`" severity="info" />
+                    <LayersDatePicker v-model="layerDate" />
 
                     <div class="flex items-center gap-2">
                         <ToggleSwitch v-model="liveWeather" inputId="fireLiveWeather" />
@@ -166,9 +255,9 @@ function onRegionClick(region) {
                     <Tag v-if="hotspots.length" :value="`очагов за 24 ч: ${hotspots.length}`" severity="danger" />
                     <Tag v-else-if="!hotspotsError" value="очагов нет" severity="success" />
 
-                    <div style="margin-left: auto">
-                        <GranularitySwitcher :model-value="GRANULARITY" :supports-region="true" :supports-np="false" />
-                    </div>
+                </template>
+                <template #actions>
+                    <GranularitySwitcher :model-value="GRANULARITY" :supports-region="true" :supports-np="false" />
                 </template>
                 <template #messages>
                     <Message v-if="error" severity="error" :closable="false" class="mt-4">{{ error }}</Message>
@@ -224,5 +313,23 @@ function onRegionClick(region) {
                 </div>
             </div>
         </div>
+
+        <div class="col-span-12">
+            <MeasuresQueue :measures="visibleMeasures" entity-label="Район" :scores="generationValues" can-decide priority-hint="Приоритет = скор риска района; решение принимает комиссия" @set-status="setStatus" @explain="openExplain">
+                <template #filter>
+                    <Button v-if="isAdmin" label="Сгенерировать черновики мер" size="small" outlined :loading="generating" @click="generateMeasures" />
+                    <template v-if="selected?.iso">
+                        <Tag :value="`фильтр: ${selected.name}`" severity="info" />
+                        <Button label="Показать все" size="small" text @click="selected = null" />
+                    </template>
+                </template>
+                <template #empty>
+                    <span v-if="selected?.iso">По району «{{ selected.name }}» мер нет — скор ниже порогов или черновики ещё не создавались.</span>
+                    <span v-else>Очередь пуста — сгенерируйте черновики по текущим скорам районов.</span>
+                </template>
+            </MeasuresQueue>
+        </div>
+
+        <MeasureExplainDialog v-model:visible="explainVisible" :measure="explainMeasure" entity-label="Район" :score="explainScore" :factors="explainFactors" :rules="MEASURE_RULES['fire-risk']" priority-note="скор риска района (население района не учитывается)" />
     </div>
 </template>

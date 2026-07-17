@@ -1,15 +1,23 @@
 <script setup>
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
 import GranularitySwitcher from '@/components/risk/GranularitySwitcher.vue';
+import LayersDatePicker from '@/components/risk/LayersDatePicker.vue';
 import MapHintBadge from '@/components/risk/MapHintBadge.vue';
+import MeasureExplainDialog from '@/components/risk/MeasureExplainDialog.vue';
+import MeasuresQueue from '@/components/risk/MeasuresQueue.vue';
 import RiskEntityCard from '@/components/risk/RiskEntityCard.vue';
 import RiskHeaderCard from '@/components/risk/RiskHeaderCard.vue';
 import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
 import SeasonPicker from '@/components/risk/SeasonPicker.vue';
+import { MEASURE_RULES } from '@/config/measureRules';
 import { RISK_HAZARDS } from '@/config/riskHazards';
-import { gibsOverlays } from '@/service/gibs';
+import { api } from '@/service/api';
+import { isAdmin } from '@/service/auth';
+import { loadDistricts } from '@/service/geo';
+import { gibsOverlays, toIsoDate } from '@/service/gibs';
 import { riskSeverity } from '@/utils/riskScore';
-import { computed, onMounted, ref } from 'vue';
+import { useToast } from 'primevue/usetoast';
+import { computed, onMounted, ref, watch } from 'vue';
 
 // Зимняя обстановка ПО РАЙОНАМ (ADM2, 174). Данные готовит scripts/winter_fetch_districts.py
 // (один раз) в frontend/public/data/winter-districts.json — страница читает статический файл,
@@ -38,7 +46,11 @@ const HISTORY_OPTIONS = Array.from({ length: 7 }, (_, i) => String(2026 - i)).ma
     value: y
 }));
 
-const tileOverlays = gibsOverlays(); // снежный покров/снимок — те же слои GIBS
+// Слои GIBS следуют дате в пикере. Дефолт от сезона: середина февраля года Y —
+// разгар зимы (Y-1)–Y; смена сезона сбрасывает дату на его дефолт.
+const layerDate = ref(new Date(+season.value, 1, 15));
+watch(season, (y) => (layerDate.value = new Date(+y, 1, 15)));
+const tileOverlays = computed(() => gibsOverlays(toIsoDate(layerDate.value)));
 
 const loading = ref(true);
 const error = ref(null);
@@ -84,6 +96,10 @@ const legendTitle = computed(() => (isToday.value ? 'Зимний риск (ML, 
 const hasData = computed(() => Object.keys(mapValues.value).length > 0);
 
 onMounted(async () => {
+    loadMeasures();
+    loadDistricts()
+        .then((list) => (districtNames.value = Object.fromEntries(list.map((d) => [d.id, d.name]))))
+        .catch(() => {});
     try {
         const response = await fetch('/data/winter-districts.json');
         if (!response.ok) throw new Error('winter-districts.json не найден');
@@ -126,12 +142,81 @@ function onRegionClick(region) {
         : null;
 
     selected.value = {
+        iso: region.iso,
         name: region.name,
         value: d ? Math.round(d.risk) : null,
         parts: d ? SUBS.map((s) => ({ label: s.label, value: Math.round(d[s.key] ?? 0) })) : [],
         ml,
         history
     };
+}
+
+// ── Очередь превентивных мер по районам ─────────────────────────────────────
+// Скоры для генерации — risk выбранного сезона из статического JSON: районов
+// в БД нет, фронт шлёт districtValues (shapeID → скор+имя) в /measures/generate.
+const toast = useToast();
+const measures = ref([]);
+const generating = ref(false);
+const districtNames = ref({}); // shapeID -> имя района (geojson)
+
+// очередь переиспользует колонки НП: district-поля мапим в settlement-поля
+const queueRows = computed(() => measures.value.map((m) => ({ ...m, settlementId: m.districtId, settlementName: m.districtName })));
+const visibleMeasures = computed(() => (selected.value?.iso ? queueRows.value.filter((m) => m.settlementId === selected.value.iso) : queueRows.value));
+
+async function loadMeasures() {
+    try {
+        measures.value = await api.get('/measures/?module=winter-risk');
+    } catch {
+        measures.value = [];
+    }
+}
+
+async function generateMeasures() {
+    generating.value = true;
+    try {
+        // Меры генерируются по формульному индексу выбранного сезона (не по ML-рангу)
+        const districtValues = Object.fromEntries(
+            Object.entries(indexValues.value)
+                .filter(([id]) => districtNames.value[id])
+                .map(([id, value]) => [id, { value, name: districtNames.value[id] }])
+        );
+        const result = await api.post('/measures/generate', { module: 'winter-risk', metricKey: 'risk_score', period: season.value, districtValues });
+        toast.add({ severity: 'success', summary: `Создано черновиков: ${result.created}`, life: 4000 });
+        await loadMeasures();
+    } catch (e) {
+        toast.add({ severity: 'error', summary: 'Ошибка генерации', detail: e.message, life: 5000 });
+    } finally {
+        generating.value = false;
+    }
+}
+
+async function setStatus(measure, status) {
+    try {
+        const updated = await api.put(`/measures/${measure.id}/status`, { status, note: null });
+        measures.value = measures.value.map((m) => (m.id === updated.id ? updated : m));
+    } catch (e) {
+        toast.add({ severity: 'error', summary: 'Не удалось изменить статус', detail: e.message, life: 5000 });
+    }
+}
+
+// Объяснимость: правило + субиндексы зимы (гололёд/метель/снегонагрузка/холод)
+const explainMeasure = ref(null);
+const explainVisible = ref(false);
+const explainScore = computed(() => {
+    const v = indexValues.value[explainMeasure.value?.settlementId];
+    return v === undefined ? null : Math.round(v);
+});
+const explainFactors = computed(() => {
+    const d = seasonData.value[explainMeasure.value?.settlementId];
+    if (!d) return [];
+    return SUBS.map((s) => {
+        const v = Math.round(d[s.key] ?? 0);
+        return { name: s.label, display: String(v), severity: riskSeverity(v) };
+    });
+});
+function openExplain(measure) {
+    explainMeasure.value = measure;
+    explainVisible.value = true;
 }
 </script>
 
@@ -142,14 +227,15 @@ function onRegionClick(region) {
                 <template #controls>
                     <SeasonPicker v-model="season" :options="seasonOptions" />
                     <SelectButton v-model="mode" :options="modeOptions" optionLabel="label" optionValue="value" optionDisabled="disabled" size="small" :disabled="isToday" :title="isToday ? 'Для «сегодня» доступен только ML-прогноз' : ''" />
+                    <LayersDatePicker v-model="layerDate" />
 
                     <Tag v-if="loading" value="загрузка…" severity="secondary" />
                     <Tag v-else-if="hasData" :value="`Районов со скорами: ${Object.keys(mapValues).length}`" severity="success" />
                     <Tag v-else value="данные не загружены" severity="warn" />
 
-                    <div style="margin-left: auto">
-                        <GranularitySwitcher :model-value="GRANULARITY" :supports-region="true" :supports-np="false" />
-                    </div>
+                </template>
+                <template #actions>
+                    <GranularitySwitcher :model-value="GRANULARITY" :supports-region="true" :supports-np="false" />
                 </template>
                 <template #messages>
                     <Message v-if="error" severity="error" :closable="false" class="mt-4">{{ error }}</Message>
@@ -217,5 +303,23 @@ function onRegionClick(region) {
                 </div>
             </div>
         </div>
+
+        <div class="col-span-12">
+            <MeasuresQueue :measures="visibleMeasures" entity-label="Район" :scores="indexValues" can-decide priority-hint="Приоритет = скор риска района; решение принимает комиссия" @set-status="setStatus" @explain="openExplain">
+                <template #filter>
+                    <Button v-if="isAdmin" label="Сгенерировать черновики мер" size="small" outlined :loading="generating" :disabled="!hasData" @click="generateMeasures" />
+                    <template v-if="selected?.iso">
+                        <Tag :value="`фильтр: ${selected.name}`" severity="info" />
+                        <Button label="Показать все" size="small" text @click="selected = null" />
+                    </template>
+                </template>
+                <template #empty>
+                    <span v-if="selected?.iso">По району «{{ selected.name }}» мер нет — скор ниже порогов или черновики ещё не создавались.</span>
+                    <span v-else>Очередь пуста — сгенерируйте черновики по скорам выбранного сезона.</span>
+                </template>
+            </MeasuresQueue>
+        </div>
+
+        <MeasureExplainDialog v-model:visible="explainVisible" :measure="explainMeasure" entity-label="Район" :score="explainScore" :factors="explainFactors" :rules="MEASURE_RULES['winter-risk']" priority-note="скор риска района за сезон генерации (население района не учитывается)" />
     </div>
 </template>

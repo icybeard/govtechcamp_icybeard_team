@@ -94,5 +94,6 @@ app.MapRegionEndpoints();
 app.MapSettlementEndpoints();
 app.MapMeasureEndpoints();
 app.MapFireEndpoints();
+app.MapDatasetEndpoints();
 
 app.Run();

@@ -46,3 +46,6 @@ appsettings.*.local.json
 !data/raw/winter_storm_warnings.csv
 !data/processed/winter_daily_features.csv
 !data/processed/winter_lgbm.txt
+
+# загрузки страницы «Данные» (локальный запуск API)
+backend/src/Api/data/uploads/

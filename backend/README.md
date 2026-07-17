@@ -53,9 +53,12 @@ dotnet watch                  # http://localhost:5080, миграции прим
 | POST | `/api/settlements/import` | Admin |
 | PUT | `/api/settlements/metrics` | Admin |
 | GET | `/api/measures/?module=&status=&settlementId=` | авторизованный |
-| POST | `/api/measures/`, `/api/measures/generate` | авторизованный / Admin |
+| POST | `/api/measures/`, `/api/measures/generate` | авторизованный / Admin; generate: flood-risk — из метрик НП в БД, fire-risk/winter-risk — из `districtValues` (скоры районов присылает фронт) |
 | PUT | `/api/measures/{id}/status` | авторизованный (аудит: кто/когда) |
 | GET | `/api/fire/hotspots` | авторизованный (прокси NASA FIRMS, кэш 15 мин, ключ `FIRMS_MAP_KEY`) |
+| GET | `/api/datasets/` | авторизованный (реестр загруженных наборов) |
+| POST | `/api/datasets/upload` | Admin (multipart: file + kind + period + note; kind=flood-scores ингестируется в метрики сразу) |
+| DELETE | `/api/datasets/{id}` | Admin |
 
 **Важно:** `GET .../metrics/{module}` без `period` возвращает все сезоны разом; для актуальных скоров И-6 передавайте `period=2024`.
 

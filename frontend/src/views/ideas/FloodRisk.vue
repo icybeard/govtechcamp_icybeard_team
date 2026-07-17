@@ -2,18 +2,21 @@
 import KazakhstanMap from '@/components/KazakhstanMap.vue';
 import GranularitySwitcher from '@/components/risk/GranularitySwitcher.vue';
 import MapHintBadge from '@/components/risk/MapHintBadge.vue';
+import MeasureExplainDialog from '@/components/risk/MeasureExplainDialog.vue';
 import MeasuresQueue from '@/components/risk/MeasuresQueue.vue';
 import RiskEntityCard from '@/components/risk/RiskEntityCard.vue';
 import RiskHeaderCard from '@/components/risk/RiskHeaderCard.vue';
 import RiskScoreBadge from '@/components/risk/RiskScoreBadge.vue';
 import SeasonalBarChart from '@/components/risk/SeasonalBarChart.vue';
 import SeasonPicker from '@/components/risk/SeasonPicker.vue';
+import { MEASURE_RULES } from '@/config/measureRules';
 import { MEASURE_STATUS } from '@/config/measureStatus';
 import { RISK_HAZARDS } from '@/config/riskHazards';
 import { api } from '@/service/api';
 import { isAdmin } from '@/service/auth';
 import { findDistrict, loadDistricts } from '@/service/geo';
-import { gibsOverlays } from '@/service/gibs';
+import LayersDatePicker from '@/components/risk/LayersDatePicker.vue';
+import { gibsOverlays, toIsoDate } from '@/service/gibs';
 import { degToCompass, fetchRegionWeather, fetchWindGrid, windMarkers } from '@/service/weather';
 import { useToast } from 'primevue/usetoast';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -75,7 +78,11 @@ const liveWeather = ref(true);
 const regionWeather = ref({});
 const weatherUpdatedAt = ref(null);
 const windGrid = ref(null);
-const tileOverlays = gibsOverlays();
+// Слои GIBS следуют дате в пикере. Дефолт от сезона: середина марта — максимум
+// снегозапаса перед таянием; смена сезона сбрасывает дату на его дефолт.
+const layerDate = ref(new Date(+season.value, 2, 15));
+watch(season, (y) => (layerDate.value = new Date(+y, 2, 15)));
+const tileOverlays = computed(() => gibsOverlays(toIsoDate(layerDate.value)));
 
 const weatherMarkers = computed(() =>
     liveWeather.value
@@ -163,6 +170,24 @@ async function generateMeasures() {
     }
 }
 
+// Объяснимость: клик по мере → диалог «Почему рекомендовано». Скор и
+// SHAP-факторы — по выбранному сезону; скор на момент генерации — в Description.
+const explainMeasure = ref(null);
+const explainVisible = ref(false);
+const explainScore = computed(() => scoreBySettlement.value[explainMeasure.value?.settlementId] ?? null);
+const explainFactors = computed(() => {
+    const point = points.value.find((p) => p.id === explainMeasure.value?.settlementId);
+    return (point?.factors ?? []).map((f) => ({
+        name: f.name,
+        display: (f.impact > 0 ? '+' : '') + f.impact.toFixed(2),
+        severity: f.impact > 0 ? 'danger' : 'success'
+    }));
+});
+function openExplain(measure) {
+    explainMeasure.value = measure;
+    explainVisible.value = true;
+}
+
 async function setStatus(measure, status) {
     try {
         const updated = await api.put(`/measures/${measure.id}/status`, { status, note: null });
@@ -179,6 +204,7 @@ async function setStatus(measure, status) {
             <RiskHeaderCard title="Паводковый риск-скоринг" description="Риск весеннего затопления населённых пунктов (ML-модель на событии 2024). Пилот: Северо-Казахстанская область.">
                 <template #controls>
                     <SeasonPicker v-model="season" :options="seasonOptions" />
+                    <LayersDatePicker v-model="layerDate" />
 
                     <div class="flex items-center gap-2">
                         <ToggleSwitch v-model="liveWeather" inputId="liveWeather" />
@@ -189,7 +215,9 @@ async function setStatus(measure, status) {
                     <Tag v-if="points.length" :value="`НП со скорами: ${points.length}`" severity="success" />
                     <Tag v-else value="данные не загружены" severity="warn" />
 
-                    <div class="flex items-center gap-3 flex-wrap" style="margin-left: auto">
+                </template>
+                <template #actions>
+                    <div class="flex items-center gap-3 flex-wrap justify-end">
                         <GranularitySwitcher :model-value="GRANULARITY" :supports-region="false" :supports-np="true" />
                         <Button v-if="isAdmin && points.length" label="Сгенерировать черновики мер" severity="contrast" size="small" :loading="generating" @click="generateMeasures" />
                     </div>
@@ -257,7 +285,7 @@ async function setStatus(measure, status) {
         </div>
 
         <div class="col-span-12">
-            <MeasuresQueue :measures="visibleMeasures" :loading="loading" entity-label="НП" :scores="scoreBySettlement" can-decide @set-status="setStatus">
+            <MeasuresQueue :measures="visibleMeasures" :loading="loading" entity-label="НП" :scores="scoreBySettlement" can-decide @set-status="setStatus" @explain="openExplain">
                 <template #filter>
                     <template v-if="selected">
                         <Tag :value="`фильтр: ${selected.name}`" severity="info" />
@@ -270,5 +298,7 @@ async function setStatus(measure, status) {
                 </template>
             </MeasuresQueue>
         </div>
+
+        <MeasureExplainDialog v-model:visible="explainVisible" :measure="explainMeasure" entity-label="Населённый пункт" :score="explainScore" :factors="explainFactors" :rules="MEASURE_RULES['flood-risk']" />
     </div>
 </template>
